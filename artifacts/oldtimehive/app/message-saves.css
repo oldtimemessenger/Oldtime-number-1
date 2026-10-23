@@ -1,0 +1,8 @@
+.bubble-msg .meta-line{align-items:center;gap:6px}
+.bubble-msg .message-footer{display:flex;align-items:center;justify-content:flex-end;gap:4px;white-space:nowrap}
+.bubble-msg .message-time{font-variant-numeric:tabular-nums}
+.bubble-msg .message-status{font-weight:700;letter-spacing:-.05em}
+.chat-typing-status{font-size:12px;color:#68727c;padding:5px 16px;background:#fff}
+.chat-typing-status[hidden]{display:none}
+.chat-head-icon.chat-favorite-action{color:#0f1419}
+.story-comment-setting{width:auto;max-width:135px;min-height:34px;padding:5px 8px;border:1px solid #ffffff50;border-radius:9px;background:#171719;color:#fff;font:inherit;font-size:11px}

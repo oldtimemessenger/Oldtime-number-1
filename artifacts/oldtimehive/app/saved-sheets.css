@@ -1,0 +1,58 @@
+.saved-social-panel .ss-recipient-hint { margin: 10px 0 14px; color: #646871; font-size:var(--fs-caption); line-height:var(--lh-body); }
+.saved-social-panel { display: flex; flex-direction: column; max-height: min(86dvh, 640px); padding: 8px 0 0; overflow: hidden; background: #fff; color: var(--text, #17191d); border-radius: 22px 22px 0 0; }
+.saved-social-panel .ss-grab { flex: 0 0 4px; width: 42px; height: 4px; margin: 0 auto 10px; border-radius: 4px; background: #d4d5d8; }
+.saved-social-panel .ss-head { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 4px 16px 12px; }
+.saved-social-panel .ss-head .ss-text { flex: 1; }
+.saved-social-panel .ss-thumb { flex: 0 0 52px; width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: #e8eaed; display: block; }
+.saved-social-panel .ss-text { display: grid; gap: 2px; min-width: 0; }
+.saved-social-panel .ss-text b { font-size: 15px; font-weight:var(--fw-control); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-social-panel .ss-text small { color: var(--muted, #6d737c); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-social-panel .ss-save, .saved-social-panel .ss-close { flex: 0 0 44px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--text, #17191d); }
+.saved-social-panel .ss-close { background: #f0f1f2; width: 36px; height: 36px; flex-basis: 36px; }
+.saved-social-panel .ss-save .navic { width: 26px; height: 26px; }
+.saved-social-panel .ss-close .navic { width: 17px; height: 17px; }
+.saved-social-panel .ss-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 12px; background: #f2f3f5; }
+.saved-social-panel .ss-sec { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+.saved-social-panel .ss-sec h2 { font-size: 16px; font-weight:var(--fw-strong); }
+.saved-social-panel .ss-link { min-height: 44px; padding: 0 2px; color: var(--text, #17191d); font-size: 14px; font-weight:var(--fw-control); text-decoration: underline; text-underline-offset: 3px; }
+.saved-social-panel .ss-list { list-style: none; display: grid; gap: 4px; }
+.saved-social-panel .ss-row { display: flex; align-items: center; gap: 2px; }
+.saved-social-panel .ss-row-main { flex: 1; min-width: 0; min-height: 60px; display: flex; align-items: center; gap: 12px; text-align: left; }
+.saved-social-panel .ss-check { margin-left: auto; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; color: #4d525a; }
+.saved-social-panel .ss-check .navic { width: 26px; height: 26px; }
+.saved-social-panel .ss-check.on { background: var(--text, #17191d); color: #fff; }
+.saved-social-panel .ss-check.on .navic { width: 18px; height: 18px; }
+.saved-social-panel .ss-mini { flex: 0 0 36px; width: 36px; height: 44px; display: grid; place-items: center; color: var(--muted, #6d737c); }
+.saved-social-panel .ss-mini .navic { width: 16px; height: 16px; }
+.saved-social-panel .ss-form { display: grid; gap: 8px; margin: 0 0 8px; padding: 10px; border-radius: 14px; background: #fff; }
+.saved-social-panel .ss-form[hidden] { display: none; }
+.saved-social-panel input[type="text"], .saved-social-panel textarea { width: 100%; padding: 12px; border: 1px solid var(--line, rgba(24,28,34,.12)); border-radius: 12px; background: #fff; outline: 0; }
+.saved-social-panel textarea { margin-top: 12px; resize: none; min-height: 60px; }
+.saved-social-panel .ss-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.saved-social-panel .ss-primary { width: 100%; min-height: 48px; padding: 0 18px; border-radius: 14px; background: #e0262f; color: #fff; font-weight:var(--fw-strong); font-size: 15px; }
+.saved-social-panel .ss-primary.ss-compact { width: auto; min-height: 40px; }
+.saved-social-panel .ss-ghost { min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line, rgba(24,28,34,.12)); border-radius: 14px; background: #fff; font-weight:var(--fw-control); font-size: 14px; }
+.saved-social-panel .ss-ghost .navic { width: 18px; height: 18px; }
+.saved-social-panel .ss-form-actions .ss-ghost { min-height: 40px; }
+.saved-social-panel .ss-error { min-height: 0; color: #c0242c; font-size: 13px; font-weight:var(--fw-control); }
+.saved-social-panel .ss-error:empty { display: none; }
+.saved-social-panel .ss-error:not(:empty) { margin-top: 8px; }
+.saved-social-panel .ss-foot { flex: 0 0 auto; padding: 10px 16px max(14px, env(safe-area-inset-bottom)); background: #f2f3f5; }
+.saved-social-panel .ss-foot-two { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+.saved-social-panel .ss-share { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.saved-social-panel .ss-preview { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; background: #fff; margin-bottom: 8px; }
+.saved-social-panel .ss-friend { position: relative; display: flex; align-items: center; gap: 12px; min-height: 56px; cursor: pointer; }
+.saved-social-panel .ss-avatar { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #e8eaed; }
+.saved-social-panel .ss-initial { display: grid; place-items: center; font-weight:var(--fw-strong); color: #4d525a; }
+.saved-social-panel .ss-friend .ss-text { flex: 1; }
+.saved-social-panel .ss-friend input { position: absolute; right: 0; width: 28px; height: 28px; opacity: 0; margin: 0; cursor: pointer; }
+.saved-social-panel .ss-box { margin-left: auto; flex: 0 0 24px; width: 24px; height: 24px; display: grid; place-items: center; border: 2px solid #b9bdc4; border-radius: 50%; color: transparent; }
+.saved-social-panel .ss-box .navic { width: 14px; height: 14px; stroke-width: 3; }
+.saved-social-panel .ss-friend input:checked ~ .ss-box { background: #e0262f; border-color: #e0262f; color: #fff; }
+.saved-social-panel .ss-friend input:focus-visible ~ .ss-box, .saved-social-panel .ss-row-main:focus-visible { outline: 2px solid var(--accent, #24262b); outline-offset: 3px; }
+.saved-social-panel .ss-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-height: 560px) { .saved-social-panel { max-height: 96dvh; } .saved-social-panel .ss-thumb { flex-basis: 42px; width: 42px; height: 42px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .saved-social-panel { animation: ss-rise .22s ease-out both; }
+  @keyframes ss-rise { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+}

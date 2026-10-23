@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Oldtime"
+description = "Existing Oldtime social app imported from oldtimemessenger/OldtimeAws for production-readiness repairs. Not yet certified for live users."
+version = "1.0.0"
+id = "artifacts/oldtimehive"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22260
+
+[services.development]
+run = "pnpm --filter @workspace/oldtimehive run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/oldtimehive", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/oldtimehive/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22260"
+BASE_PATH = "/"

@@ -1,0 +1,8 @@
+.pp-back{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center}
+.pp-sheet{width:min(100%,480px);max-height:80dvh;background:#f6f4f1;color:#16181b;border-radius:18px 18px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.pp-sheet h2{margin:0;font-size:15px}.pp-sheet small{color:#666}
+.pp-row{display:flex;gap:8px}.pp-row input{flex:1;min-width:0;padding:10px;border:1px solid #cfcac2;border-radius:10px;font:inherit;font-size:16px;background:#fff}
+.pp-sheet button{font:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid #cfcac2;background:#fff;color:#16181b}
+.pp-sheet button.pp-main{background:#16181b;color:#fff;border-color:#16181b}
+.pp-list{overflow:auto;display:flex;flex-direction:column;gap:4px}.pp-list button{text-align:left}
+.pp-cur{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:#ece8e1}

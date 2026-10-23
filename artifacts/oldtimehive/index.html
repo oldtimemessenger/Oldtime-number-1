@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#990000" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Oldtime</title>
+<meta name="description" content="Oldtime brings short-form video, chat, and communities together." />
+<link rel="manifest" href="%BASE_URL%manifest.json" />
+<link rel="icon" href="app-icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="app-icon-180.png" />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" rel="stylesheet" />
+<style>
+  .oldtime-startup { --font:system-ui,-apple-system,"Segoe UI",sans-serif; position:fixed; inset:0; z-index:2000; overflow:hidden; background:#990000; color:#fff; transition:opacity .22s ease; }
+  .oldtime-startup-art { position:absolute; left:50%; top:50%; width:min(176px,42vw,32vh); height:auto; max-height:100%; object-fit:contain; object-position:center; transform:translate(-50%,-50%); }
+  .oldtime-startup-status { position:absolute; left:50%; bottom:max(64px,calc(env(safe-area-inset-bottom,0px) + 48px)); width:min(240px,65vw); display:grid; justify-items:center; gap:14px; transform:translateX(-50%); font:500 12px/1.5 var(--font); text-align:center; }
+  .oldtime-startup-track { width:100%; height:4px; overflow:hidden; border-radius:99px; background:rgba(255,255,255,.28); }
+  .oldtime-startup-track > span { display:block; width:35%; height:100%; border-radius:inherit; background:#ffffff; animation:oldtime-opening-progress 1.2s ease-in-out infinite; }
+  .oldtime-startup.is-complete .oldtime-startup-track > span { width:100%; animation:none; transform:none; }
+  .oldtime-startup.is-dismissed { opacity:0; visibility:hidden; pointer-events:none; }
+  .oldtime-startup-retry { min-height:44px; padding:10px 18px; border:1px solid #cfd9de; border-radius:999px; background:#ffffff; color:#0f1419; font:700 13px/1.4 var(--font); cursor:pointer; }
+  .oldtime-startup-retry[hidden] { display:none; }
+  .oldtime-startup-retry:focus-visible { outline:2px solid #fff; outline-offset:4px; }
+  @keyframes oldtime-opening-progress { from { transform:translateX(-110%); } to { transform:translateX(390%); } }
+  @media (min-aspect-ratio:1/1) { .oldtime-startup-art { object-fit:contain; } }
+  @media (prefers-reduced-motion:reduce) { .oldtime-startup { transition:none; } .oldtime-startup-track > span { animation:none; width:45%; transform:translateX(60%); } }
+</style>
+</head>
+<body>
+<div class="oldtime-startup" id="oldtime-startup" aria-label="Opening Oldtime">
+  <img class="oldtime-startup-art" src="brand/oldtime-login-red.png" alt="Oldtime stopwatch and feather logo" fetchpriority="high" />
+  <div class="oldtime-startup-status">
+    <div class="oldtime-startup-track" role="progressbar" aria-label="Loading Oldtime"><span></span></div>
+    <p id="oldtime-startup-label" role="status">Loading Oldtime…</p>
+    <button class="oldtime-startup-retry" id="oldtime-startup-retry" type="button" hidden>Try again</button>
+  </div>
+</div>
+<div id="app" inert aria-hidden="true"></div>
+<script type="module" src="app/release-entry.js" id="oldtime-entry"></script>
+<script>
+  (() => {
+    const opening = document.getElementById("oldtime-startup");
+    opening.dataset.started = String(performance.now());
+    const label = document.getElementById("oldtime-startup-label");
+    const retry = document.getElementById("oldtime-startup-retry");
+    const showOpeningError = () => {
+      if (opening.dataset.ready === "true") return;
+      label.textContent = "Couldn’t open Oldtime. Please try again.";
+      retry.hidden = false;
+    };
+    document.getElementById("oldtime-entry").addEventListener("error", showOpeningError);
+    window.addEventListener("error", event => { if (event.error) showOpeningError(); });
+    window.addEventListener("unhandledrejection", showOpeningError);
+    retry.addEventListener("click", () => location.reload());
+    setTimeout(() => {
+      if (opening.dataset.ready === "true") return;
+      label.textContent = "Taking longer than usual. You can try again.";
+      retry.hidden = false;
+    }, 16000);
+  })();
+</script>
+</body>
+</html>

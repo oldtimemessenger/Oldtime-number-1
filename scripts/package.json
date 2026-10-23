@@ -1,0 +1,19 @@
+{
+  "name": "@workspace/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hello": "tsx ./src/hello.ts",
+    "creator-admin": "tsx ./src/creator-admin.ts",
+    "supabase:check": "tsx ./src/check-supabase.ts",
+    "supabase:prepare": "tsx ./src/prepare-supabase.ts",
+    "supabase:migrate": "tsx ./src/migrate-supabase.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@workspace/db": "workspace:*",
+    "tsx": "catalog:"
+  }
+}

@@ -1,0 +1,28 @@
+.auth.ot-auth{--ot-ink:#ffffff;--ot-muted:#e7e7e9;--ot-field-ink:#0f1419;--ot-line:#cfd9de;--ot-red:#ffffff;
+  background:#990000;color:var(--ot-ink);padding:0 20px calc(24px + env(safe-area-inset-bottom,0px));gap:0;height:100%;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;font-family:var(--font,system-ui,sans-serif);color-scheme:light}
+.ot-auth *{box-sizing:border-box}
+.ot-auth > *{width:100%;max-width:420px;margin-left:auto;margin-right:auto;flex-shrink:0}
+.ot-auth .ot-art{position:relative;margin:max(16px,env(safe-area-inset-top)) auto 16px;width:min(88px,24vw);aspect-ratio:845/1024;max-height:24vh;border-radius:0;overflow:hidden;background:transparent;flex:none;align-self:center}
+.ot-auth .ot-art img{width:100%;height:100%;object-fit:contain;object-position:50% 50%;display:block}
+.ot-auth .ot-eyebrow{margin:0 0 6px;font-size:11px;font-weight:var(--fw-strong);letter-spacing:.16em;text-transform:uppercase;color:var(--ot-muted)}
+.ot-auth h1{margin:0 0 6px;font-family:var(--font-heading);font-size:var(--fs-page);line-height:var(--lh-heading);font-weight:var(--fw-heading);letter-spacing:-.03em;color:var(--ot-ink)}
+.ot-auth .ot-lede{margin:0 0 16px;font-size:14px;line-height:1.45;color:var(--ot-muted)}
+.ot-auth .ot-rule{height:1px;width:44px;background:rgba(255,255,255,.35);margin:0 0 14px;border:0}
+.ot-auth .auth-form{display:flex;flex-direction:column;gap:10px;width:100%}
+.ot-auth .ot-label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:var(--fw-strong);color:var(--ot-ink)}
+.ot-auth .ot-label small{font-weight:var(--fw-caption);color:var(--ot-muted)}
+.ot-auth .field{background:#f7f9fa;border:1px solid #cfd9de;border-radius:12px;padding:11px 12px;font-size:16px;font-weight:var(--fw-body);color:var(--ot-field-ink);min-height:44px;font-family:inherit;transition:border-color .16s,box-shadow .16s}
+.ot-auth .field::placeholder{color:#687181}
+.ot-auth .field:focus{outline:2px solid #ffffff;outline-offset:2px}
+.ot-auth #err{font-weight:700;min-height:18px;margin:0;font-size:13px;font-weight:var(--fw-control);color:var(--ot-red)}
+.ot-auth .btn{min-height:44px;border-radius:999px;font-size:15px;font-weight:var(--fw-strong);font-family:inherit;cursor:pointer;transition:transform .12s,opacity .16s}
+.ot-auth .btn:active{transform:scale(.985)}
+.ot-auth .btn.primary{background:#0f1419;color:#fff;border:1px solid #0f1419}
+.ot-auth .btn.primary:disabled{opacity:.55}
+.ot-auth .btn.ghost{background:#f1f1f2;color:#161823;border:1px solid #e6e6e8}
+.ot-auth .btn.auth-link{min-height:36px;padding:4px 8px;background:transparent;border:0;color:var(--ot-muted);font-size:13px}
+.ot-auth .btn.auth-link strong{color:var(--ot-ink);font-weight:var(--fw-strong)}
+.ot-auth .ot-switch{margin:16px 0 10px;text-align:center;font-size:14px;color:var(--ot-ink);display:flex;flex-direction:column;gap:10px}
+.ot-auth .ot-switch span{color:var(--ot-muted)}
+.ot-auth > :is(.ot-eyebrow,h1,.auth-form,.ot-switch,.ot-rule){margin-left:auto;margin-right:auto}
+@media (max-height:640px){.ot-auth .ot-art{width:72px;max-height:22vh;margin-bottom:8px}}

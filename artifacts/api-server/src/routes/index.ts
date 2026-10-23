@@ -1,0 +1,48 @@
+import { Router, type IRouter } from "express";
+import authRouter from "./auth";
+import cognitoRouter from "./cognito";
+import healthRouter from "./health";
+import socialRouter from "./social";
+import storiesRouter from "./stories";
+import sportsRouter from "./sports";
+import creatorProgramRouter from "./creator-program";
+import creatorContentRouter from "./creator-content";
+import accountProfessionalRouter from "./account-professional";
+import analyticsEventsRouter from "./analytics-events";
+import analyticsReportRouter from "./analytics-report";
+import participationRouter from "./participation";
+import placesRouter from "./places";
+import tournamentsRouter from "./tournaments";
+import chatsRouter from "./chats";
+import userMediaRouter from "./user-media";
+import creativeDraftsRouter from "./creative-drafts";
+import blastStateRouter from "./blast-state";
+import accountStateRouter from "./account-state";
+import accountReportsRouter from "./account-reports";
+import notificationsRouter from "./notifications";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(authRouter);
+router.use(cognitoRouter);
+router.use(socialRouter);
+router.use(storiesRouter);
+router.use(sportsRouter);
+router.use(creatorProgramRouter);
+router.use(creatorContentRouter);
+router.use(accountProfessionalRouter);
+router.use(analyticsEventsRouter);
+router.use(analyticsReportRouter);
+router.use(participationRouter);
+router.use(placesRouter);
+router.use(tournamentsRouter);
+router.use(chatsRouter);
+router.use(userMediaRouter);
+router.use(creativeDraftsRouter);
+router.use(blastStateRouter);
+router.use(accountStateRouter);
+router.use(accountReportsRouter);
+router.use(notificationsRouter);
+
+export default router;

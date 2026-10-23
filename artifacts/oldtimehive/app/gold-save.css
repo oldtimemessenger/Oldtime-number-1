@@ -1,0 +1,10 @@
+.ss-save[data-saved-toggle]{background:transparent}
+.ss-save[data-saved-toggle].on{color:#1d9bf0;background:transparent}
+.ss-save[data-saved-toggle].on svg,.act[data-save].on svg,button[data-a="save"][aria-pressed=true] svg{color:#1d9bf0;fill:#1d9bf0;stroke:#1d9bf0;filter:none}
+.notification-activity-menu{position:relative;flex:none;font-size:12px}
+.notification-activity-menu>summary{display:flex;align-items:center;gap:4px;list-style:none;padding:7px 9px;border-radius:9px;background:#f1f2f4;color:#111827;cursor:pointer}
+.notification-activity-menu>summary::-webkit-details-marker{display:none}
+.notification-activity-menu>summary svg{width:15px;height:15px}
+.notification-activity-options{position:absolute;right:0;top:calc(100% + 7px);z-index:12;width:220px;padding:10px;border:1px solid #e7e9ee;border-radius:13px;background:#fff;color:#111827;box-shadow:0 8px 24px #11182718}
+.notification-activity-options select{width:100%;padding:8px;font:inherit;background:#f5f6f8;color:#111827;border:0;border-radius:8px}
+.notification-activity-options .listbtn{padding:10px 4px;font-size:12px;margin-top:6px;border:0}

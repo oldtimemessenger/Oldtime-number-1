@@ -1,0 +1,13 @@
+# Replace the domain with your actual hostname. This serves the website and
+# proxies both REST and Socket.IO/WebSocket traffic to the same API service.
+app.example.com {
+    encode zstd gzip
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+    handle {
+        root * /opt/oldtime/artifacts/oldtimehive/dist/public
+        try_files {path} /index.html
+        file_server
+    }
+}

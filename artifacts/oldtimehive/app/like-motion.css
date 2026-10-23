@@ -1,0 +1,6 @@
+/* Red reflects the real liked state (.on) only; .like-pending is a short optimistic hint removed on settle. */
+.act[data-like].on, .clip .act[data-like].on, .act[data-like].like-pending, .clip .act[data-like].like-pending { color:#e5262f; }
+.act[data-like].on svg, .act[data-like].like-pending svg { fill:#e5262f; stroke:#e5262f; }
+.act[data-like].like-pop svg { animation:like-pop .32s cubic-bezier(.2,1.6,.4,1) both; transform-origin:center; }
+@keyframes like-pop { 0%{transform:scale(.6)} 60%{transform:scale(1.28)} 100%{transform:scale(1)} }
+@media (prefers-reduced-motion: reduce) { .act[data-like].like-pop svg { animation:none; } }

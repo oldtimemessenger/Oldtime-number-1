@@ -1,0 +1,93 @@
+/* Glossy red primary actions, solid black secondary actions, and quiet gray surfaces. */
+:root {
+  --bg:#ffffff; --panel:#f1f1f2; --card:#ffffff; --text:#161823; --muted:#737373;
+  --line:rgba(22,24,35,.12); --accent:#d51f32; --accent-pink:#d51f32; --accent-gold:#0f1419; --brand-red:#d51f32;
+  --notification-accent:#f4212e; --story-ring:linear-gradient(150deg,#8b8f94,#0f1419);
+  --bp-black:#161823; --bp-black-on:#ffffff;
+  --bp-orange:#d51f32; --bp-orange-press:#ad1425; --bp-orange-on:#ffffff;
+  --bp-soft:#d0d3d7; --bp-neutral:#f1f1f2; --bp-neutral-on:#161823;
+  --bp-disabled-bg:#e3e5e9; --bp-disabled-ink:#5c6068;
+}
+.btn, .chat-newgroup, .bvn-record-cta, .blast-primary, .followwide, #pfollow, .followpill, .followchip, .contact-follow,
+.creative-editor .ce-primary, .creative-editor .ce-text-done, .creative-editor .ce-theme-btn[aria-pressed=true],
+.creative-editor .ce-camera-settings[open] > summary, .creative-editor .ce-crop-bar .ce-ok {
+  background:linear-gradient(180deg,#ed3545 0%,var(--bp-orange) 100%); color:var(--bp-orange-on); border:1px solid var(--bp-orange); box-shadow:inset 0 1px 0 rgba(255,255,255,.22); min-height:44px;
+}
+.btn:active, .chat-newgroup:active, .followwide:active, .creative-editor .ce-primary:active { background:linear-gradient(180deg,var(--bp-orange) 0%,var(--bp-orange-press) 100%); }
+.btn.ghost, .contact-follow.following, .cta-secondary {
+  background:var(--bp-neutral); color:var(--bp-neutral-on); border:1px solid var(--line); min-height:44px;
+}
+.btn.ghost:active, .contact-follow.following:active, .cta-secondary:active { background:#e6e6e8; }
+.cta-secondary {
+  background:var(--bp-black); color:var(--bp-black-on); border-color:var(--bp-black);
+}
+.cta-secondary:active { background:#30323a; }
+.people-match-view, .seg button.on, .settings-content .seg button.on, .account-settings-screen .settings-content .seg button.on {
+  background:var(--bp-black); color:var(--bp-black-on); border:1px solid var(--bp-black);
+}
+.cta-primary {
+  background:linear-gradient(180deg,#ed3545 0%,var(--bp-orange) 100%);
+  color:var(--bp-orange-on);
+  border:1px solid var(--bp-orange);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22);
+}
+.chat-inbox-filter.active { background:#fff; color:#17191c; border-color:#17191c; }
+.btn.danger, .btn.ghost.danger, .creative-editor .ce-danger { background:#fff; color:#b51e29; border:1px solid #b51e29; }
+.btn:disabled, .followwide:disabled, .ot-auth .btn:disabled, .creative-editor .ce-primary:disabled {
+  background:var(--bp-disabled-bg); color:var(--bp-disabled-ink); border-color:transparent; opacity:1;
+}
+:where(.btn,.followwide,.chat-newgroup,.bvn-record-cta,.chat-head-icon,.chat-option,.chat-inbox-filter,.bvn-chat-tool,.bvn-save-message):focus-visible {
+  outline:2px solid var(--bp-orange); outline-offset:2px;
+}
+.creative-editor input[type=range] { accent-color:var(--bp-soft); }
+.creative-editor[data-ce-tools="light"] input[type=range] { accent-color:var(--bp-orange); }
+.creative-editor .ce-dock-row > .ce-menu[open] > summary,
+.creative-editor .ce-dock-row > .ce-tool[aria-pressed=true],
+.creative-editor .ce-dock-row > .ce-tool[aria-expanded=true] { box-shadow:inset 0 -3px 0 var(--bp-soft); }
+.creative-editor[data-ce-tools="light"] .ce-dock-row > .ce-menu[open] > summary,
+.creative-editor[data-ce-tools="light"] .ce-dock-row > .ce-tool[aria-pressed=true],
+.creative-editor[data-ce-tools="light"] .ce-dock-row > .ce-tool[aria-expanded=true] { box-shadow:inset 0 -3px 0 var(--bp-orange); }
+.creative-editor .ce-quote-style[aria-pressed=true] { border-color:var(--bp-soft); box-shadow:0 0 0 2px rgba(208,211,215,.3); }
+.creative-editor .ce-sheet-done, .creative-editor .ce-panel .ce-sheet-done { color:var(--bp-orange); }
+.creative-editor[data-ce-tools="dark"] .ce-sheet-done, .creative-editor .ce-media-panel .ce-sheet-done { color:var(--bp-soft); }
+.creative-editor :is(.ce-primary,.ce-text-done,.ce-quote-readable,.ce-quote-font,.ce-theme-btn,.ce-strip-upload,.ce-strip-handle,.ce-strip-tile):focus-visible {
+  outline:3px solid var(--bp-soft); outline-offset:3px;
+}
+.creative-editor[data-ce-tools="light"] :is(.ce-primary,.ce-theme-btn,.ce-strip-upload,.ce-strip-handle):focus-visible { outline-color:var(--bp-orange); }
+.creative-editor .ce-strip-tile:active { border-color:var(--bp-soft); }
+.auth.ot-auth .btn.primary { background:linear-gradient(180deg,#ed3545 0%,var(--bp-orange) 100%); color:#fff; border:1px solid var(--bp-orange); }
+.auth.ot-auth .btn.primary:active { background:linear-gradient(180deg,var(--bp-orange) 0%,var(--bp-orange-press) 100%); }
+.auth.ot-auth .btn.ghost, .auth.ot-auth .btn:not(.primary) { background:var(--bp-neutral); color:var(--bp-neutral-on); border:1px solid var(--line); }
+.auth.ot-auth .btn:focus-visible { outline:3px solid #fff; outline-offset:3px; }
+
+/* Feature controls with older, more-specific declarations share the same brand contract. */
+.audio-panel .ap-primary, .people-match-follow, .settings-save-bar > button,
+.ot-control.ot-accept, .ot-post-primary, .ct-btn:not(.ghost), .ap-btn:not(.ghost) {
+  background:linear-gradient(180deg,#ed3545 0%,var(--bp-orange) 100%); color:#fff; border-color:var(--bp-orange);
+}
+.phone .blast-screen .blast-primary, .blast-screen .blast-primary,
+.phone .bvn-screen .bvn-record-cta, .bvn-screen .bvn-record-cta,
+.phone .bvn-screen .bvn-share-submit, .bvn-screen .bvn-share-submit,
+.bvn-editor-screen .bvn-share-submit, .bvn-editor-screen .bvn-editor-save-dock .bvn-share-submit,
+.bvn-screen:not(.bvn-twitter-feed) .bvn-chat-composer button[type="submit"],
+.account-settings-screen .exp-primary {
+  background:linear-gradient(180deg,#ed3545 0%,var(--bp-orange) 100%)!important; color:#fff!important; border-color:var(--bp-orange);
+}
+.account-settings-screen .settings-content .btn.ghost {
+  background:var(--bp-neutral)!important; color:var(--bp-neutral-on)!important; border-color:var(--line);
+}
+.clip .act[data-like].on, .bvn-card-actions .bvn-social-actions button.is-liked, .bvn-detail-heart.is-liked { color:#e0245e; }
+.clip .act[data-save].on { color:#1d9bf0; }
+.ct-tabs button.on, .ap-tabs button.on, .ap-seg button.on {
+  background:var(--bp-black); color:#fff; border-color:var(--bp-black);
+}
+.phone .btn.danger, .phone .btn.ghost.danger { background:#fff; color:#b51e29!important; border-color:#b51e29; }
+.phone .btn:disabled, .ct-btn:disabled, .ap-btn:disabled, .audio-panel .ap-primary:disabled,
+.people-match-follow:disabled, .settings-save-bar > button:disabled,
+.blast-screen .blast-primary:disabled, .bvn-screen .bvn-record-cta:disabled,
+.bvn-screen .bvn-share-submit:disabled, .bvn-editor-screen .bvn-share-submit:disabled,
+.bvn-editor-screen .bvn-editor-save-dock .bvn-share-submit:disabled,
+.account-settings-screen .exp-primary:disabled {
+  background:var(--bp-disabled-bg)!important; color:var(--bp-disabled-ink)!important;
+  border-color:transparent; opacity:1;
+}

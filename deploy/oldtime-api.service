@@ -1,0 +1,24 @@
+[Unit]
+Description=Oldtime API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oldtime
+Group=oldtime
+WorkingDirectory=/opt/oldtime/artifacts/api-server
+EnvironmentFile=/etc/oldtime/api.env
+ExecStart=/usr/bin/env node --enable-source-maps dist/index.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

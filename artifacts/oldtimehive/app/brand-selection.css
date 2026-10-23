@@ -1,0 +1,41 @@
+:root {
+  --brand-red:var(--bp-orange,#0f1419);
+}
+
+/* Shared primary action buttons use the app's orange brand token.
+   Navigation, tabs, text selection, and secondary controls keep their original colors. */
+.phone .btn:not(.ghost):not(.danger),
+.phone #pfollow.followwide,
+.phone .blast-screen .blast-primary,
+.phone .bvn-screen.bvn-twitter-feed .bvn-capture-actions > .bvn-record-cta,
+.phone .bvn-screen:not(.bvn-twitter-feed) .bvn-record-cta,
+.phone .bvn-screen .bvn-share-submit,
+.bvn-editor-screen .bvn-share-submit,
+.bvn-editor-screen .bvn-editor-save-dock .bvn-share-submit {
+  background:var(--brand-red);
+  border-color:var(--brand-red);
+  color:#fff !important;
+}
+
+/* Compact profile actions: orange primary button, neutral gray secondary buttons. */
+.phone .profile-screen .profile-primary-actions .followwide {
+  min-height:40px;
+  padding:10px 12px;
+  border-radius:8px;
+  font:700 14px/1.2 var(--font,system-ui,sans-serif);
+}
+.phone .profile-screen #edit.followwide {
+  background:var(--brand-red);
+  border-color:var(--brand-red);
+  color:#fff;
+}
+.phone .profile-screen #logout,
+.phone .profile-screen #pmsg {
+  min-height:40px;
+  padding:10px 12px;
+  border-radius:8px;
+  background:#f0f1f3;
+  border-color:#f0f1f3;
+  color:#17191d;
+  font:700 14px/1.2 var(--font,system-ui,sans-serif);
+}

@@ -1,0 +1,25 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {renderCreativeEditor} from "./creative-editor-view.js";
+test("compact creation keeps core controls and hides Quote without duplicate IDs",()=>{
+  const html=renderCreativeEditor(),ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);
+  assert.equal(ids.length,new Set(ids).size);
+  for(const id of ["ce-workspace","ce-shutter","ce-photo","ce-record","ce-flash","ce-zoom","ce-camera-timer","ce-share-toggle","ce-publish","ce-draw","ce-upload","ce-export","ce-undo","ce-redo","ce-save-exit","ce-exit-save","ce-exit-discard","ce-exit-cancel"])assert.ok(ids.includes(id),id);
+  const workspace=html.match(/<select id="ce-workspace"[\s\S]*?<\/select>/)[0];
+  assert.equal((workspace.match(/<option/g)||[]).length,2);
+  for(const kind of ["photo","video","story","carousel"])assert.match(html,new RegExp(`data-ce-capture-mode="${kind}"`));
+  assert.doesNotMatch(html,/data-ce-capture-mode="quote"|ce-quote-photo|Quote designs/);
+  assert.match(html,/class="ce-capture-modes" hidden/);
+  assert.ok(ids.includes("ce-capture-label"));
+  assert.ok(!html.match(/class="ce-capture-modes" hidden[\s\S]*?<\/div>/)[0].includes('id="ce-shutter"'));
+  assert.match(html,/class="ce-camera-settings"/);
+  assert.match(html,/class="ce-menu ce-header-menu"/);
+  assert.match(html,/class="ce-menu ce-quick"/);
+  assert.doesNotMatch(html,/id="ce-quote-designs"/);
+  assert.equal((html.match(/<details[^>]*\bopen(?:\s|>)/g)||[]).length,0);
+  assert.match(html, /id="ce-save-exit"[^>]*>Save &amp; Exit/);
+  assert.match(html, /id="ce-exit-dialog"[^>]*role="alertdialog"[^>]*hidden/);
+  assert.match(html, /id="ce-empty"[^>]*>[\s\S]*Make this moment yours\.[\s\S]*choose one from your gallery\./);
+  assert.match(html, /id="ce-camera-gallery-slot"/);
+  assert.match(html, /id="ce-error" class="ce-error" role="alert"/);
+});

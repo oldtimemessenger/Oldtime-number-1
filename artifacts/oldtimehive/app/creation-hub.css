@@ -1,0 +1,41 @@
+.ch-back{position:fixed;inset:0;z-index:9000;background:#0d0e11;color:#f7f7f7;display:flex;justify-content:center}
+.ch-page{width:min(100%,680px);height:100dvh;min-height:100%;display:flex;flex-direction:column;background:#0d0e11;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);font-family:inherit}
+.ch-header{height:54px;min-height:54px;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.1)}
+.ch-header h1{margin:0;text-align:center;font-size:16px;font-weight:700;letter-spacing:-.02em}
+.ch-close{width:40px;height:40px;border:0;border-radius:50%;background:transparent;color:inherit;display:grid;place-items:center}
+.ch-close svg{width:21px;height:21px}
+.ch-header-spacer{width:40px}
+.ch-scroll{overflow-y:auto;overscroll-behavior:contain;padding:16px 16px 22px}
+.ch-primary-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ch-primary{min-height:64px;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 12px;border:1px solid rgba(255,255,255,.12);border-radius:13px;background:#202125;color:#fff;font:inherit;font-size:15px;font-weight:650}
+.ch-primary:focus-visible,.ch-quick:focus-visible,.ch-row:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.ch-primary-icon{width:31px;height:31px;display:grid;place-items:center;flex:none;border-radius:5px;background:#f5f5f5;color:#111}
+.ch-primary-icon svg{width:20px;height:20px}
+.ch-quick svg,.ch-row svg{width:19px;height:19px;flex:none}
+.ch-quick-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:11px}
+.ch-quick{min-height:43px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid rgba(255,255,255,.15);border-radius:999px;background:transparent;color:#f7f7f7;font:inherit;font-size:13px;font-weight:600}
+.ch-quick:active,.ch-primary:active,.ch-row:active{background:#303136}
+.ch-recents-section{margin-top:24px}
+.ch-section-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:11px}
+.ch-section-heading h2{margin:0;font-size:15px;font-weight:700;letter-spacing:-.015em}
+.ch-section-heading>span{color:#a2a2a7;font-size:11px}
+.ch-recents{display:grid;grid-auto-flow:column;grid-auto-columns:84px;grid-template-rows:1fr;gap:7px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;padding-bottom:3px}
+.ch-recents.is-empty{display:block;overflow:visible}
+.ch-recents::-webkit-scrollbar{display:none}
+.ch-empty{grid-column:1/-1;margin:0;min-height:72px;display:flex;align-items:center;justify-content:center;padding:12px;border:1px dashed rgba(255,255,255,.18);border-radius:10px;color:#aaaab0;text-align:center;font-size:12px;line-height:1.45}
+.ch-recent{position:relative;width:84px;aspect-ratio:1;border:0;border-radius:8px;overflow:hidden;padding:0;background:#202125;scroll-snap-align:start}
+.ch-recent img{width:100%;height:100%;display:block;object-fit:cover}
+.ch-share-section{margin-top:24px;padding-bottom:8px}
+.ch-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ch-row{min-height:45px;display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:#17181c;color:#f4f4f4;font:inherit;font-size:13px;font-weight:560;text-align:left}
+.ch-row svg{color:#ed4c5c}
+.ch-file{display:none}
+@media(max-width:360px){.ch-scroll{padding-left:12px;padding-right:12px}}
+@media(min-width:681px){.ch-back{background:rgba(0,0,0,.7)}.ch-page{border-left:1px solid rgba(255,255,255,.08);border-right:1px solid rgba(255,255,255,.08)}}
+.home-create-button{position:absolute;left:0;top:50%;transform:translateY(-50%);width:28px;min-width:28px;height:30px;border:0;background:transparent;color:#fff}
+.home-create-button .navic{width:18px;height:18px}
+.home-primary-row{padding-left:34px;padding-right:88px}
+.home-primary-row .home-view-tabs{max-width:100%;padding:0;margin:0;justify-content:center}
+.home-primary-row .home-view-tab{min-width:0;padding-left:3px;padding-right:3px;white-space:nowrap}
+.home-screen:not(:has(.clip)) .home-create-button{color:#17191d}
+.sec-prev,.sec-next{font-size:12px;padding:4px 8px}

@@ -1,0 +1,3289 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Account registration and sessions
+  - name: social
+    description: Cloud-backed profiles, posts, and likes
+paths:
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [notifications]
+      parameters:
+        - name: before
+          in: query
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Authenticated account activity, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationFeed"
+  /notifications/read:
+    post:
+      operationId: readNotifications
+      tags: [notifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationReadInput"
+      responses:
+        "200":
+          description: Read cursor saved to the account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [readAt]
+                properties:
+                  readAt: { type: number }
+  /tournaments:
+    get:
+      operationId: listTournaments
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [all, mine] } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000 } }
+      responses:
+        "200":
+          description: Accessible tournaments, with authoritative server standings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tournaments, hasMore, serverNow]
+                properties:
+                  tournaments: { type: array, items: { $ref: "#/components/schemas/Tournament" } }
+                  hasMore: { type: boolean }
+                  serverNow: { type: string, format: date-time }
+        "401": { description: Sign-in required }
+    post:
+      operationId: createTournament
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TournamentInput" }
+      responses:
+        "201":
+          description: Created competition; featuring another person remains private pending their consent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tournament" }
+        "400": { description: Invalid tournament settings }
+        "401": { description: Sign-in required }
+  /tournaments/people:
+    get:
+      operationId: searchTournamentPeople
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 60 } }
+      responses:
+        "200":
+          description: Available registered users, excluding blocked accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users: { type: array, items: { $ref: "#/components/schemas/TournamentPerson" } }
+  /tournaments/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getTournament
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": &tournamentResult
+          description: Current tournament; completion standings are immutable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tournament" }
+        "404": { description: Tournament not found or not accessible }
+  /tournaments/{id}/join:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: joinTournament
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TournamentJoin" }
+      responses:
+        "200": *tournamentResult
+        "403": { description: Invitation or consent required }
+        "409": { description: Competition ended or participation already declined }
+  /tournaments/{id}/decline:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: declineTournamentInvitation
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TournamentEmptyAction" }
+      responses:
+        "200": *tournamentResult
+        "409": { description: No pending invitation or competition ended }
+  /tournaments/{id}/invitations:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: inviteTournamentParticipant
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TournamentInvitation" }
+      responses:
+        "200": *tournamentResult
+        "403": { description: Organizer permission required }
+        "409": { description: Duplicate invitation or competition ended }
+  /tournaments/{id}/support:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: supportTournamentParticipant
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TournamentSupport" }
+      responses:
+        "200": *tournamentResult
+        "409": { description: "Duplicate or self support, or outside official competition window" }
+  /tournaments/{id}/cancel:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: cancelTournament
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TournamentEmptyAction" }
+      responses:
+        "200": *tournamentResult
+        "403": { description: Organizer permission required }
+        "409": { description: Only upcoming competitions can be cancelled }
+  /boards/{id}/entries/{entryId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entryId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updateParticipationEntry
+      summary: Edit an author's entry or moderate a board entry
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParticipationEntryUpdate"
+      responses:
+        "200":
+          description: Updated entry, with access-controlled author and moderation fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParticipationEntryResult"
+        "400": { description: Invalid edit }
+        "401": { description: Sign-in required }
+        "404": { description: Entry unavailable or edit not permitted }
+    delete:
+      operationId: deleteParticipationEntry
+      summary: Delete the signed-in author's own board entry
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Entry deleted }
+        "401": { description: Sign-in required }
+        "404": { description: Entry unavailable or not owned by the signed-in user }
+  /boards:
+    get:
+      operationId: listParticipationBoards
+      summary: List boards visible to the signed-in user
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000 } }
+        - { name: mine, in: query, schema: { type: boolean } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: sort, in: query, schema: { type: string, enum: [recent, popular] } }
+      responses:
+        "200":
+          description: Public, owned, and invited boards visible to the signed-in user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipationBoardListResult" }
+        "401": { description: Sign-in required }
+    post:
+      operationId: createParticipationBoard
+      summary: Create a Get On Board prompt with explicit visibility settings
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ParticipationBoardInput" }
+      responses:
+        "201":
+          description: Created board
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipationBoard" }
+        "400": { description: Invalid board settings }
+        "401": { description: Sign-in required }
+  /boards/{id}:
+    get:
+      operationId: getParticipationBoard
+      summary: Get a board and its accessible entries
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Board and visible entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipationBoardDetailResult" }
+        "401": { description: Sign-in required }
+        "404": { description: Board not found or not accessible }
+    delete:
+      operationId: deleteParticipationBoard
+      summary: Delete the signed-in creator's board and its media
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Board and attached entries deleted }
+        "401": { description: Sign-in required }
+        "404": { description: Board not found or not owned by the signed-in user }
+  /boards/{id}/entries:
+    post:
+      operationId: createParticipationEntry
+      summary: Respond to a board with text
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ParticipationEntryInput" }
+      responses:
+        "201":
+          description: Created entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipationEntryResult" }
+        "200":
+          description: Existing entry returned after an idempotent retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipationEntryResult" }
+        "400": { description: Invalid entry or unsupported response type }
+        "401": { description: Sign-in required }
+        "409": { description: Board unavailable or duplicate entry belongs to another user }
+  /boards/{id}/entries/media/{entryId}/{mediaType}:
+    post:
+      operationId: uploadParticipationEntryMedia
+      summary: Upload a photo or video response to a board
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entryId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mediaType, in: path, required: true, schema: { type: string, enum: [photo, video] } }
+        - { name: X-Upload-Mime, in: header, required: true, schema: { type: string, enum: [image/jpeg, video/mp4, video/webm] } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Created media response
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipationEntryResult" }
+        "200":
+          description: Existing entry returned after an idempotent retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipationEntryResult" }
+        "400": { description: Invalid or unsupported media }
+        "401": { description: Sign-in required }
+        "409": { description: Board unavailable or duplicate entry belongs to another user }
+  /places/search:
+    get:
+      operationId: searchPlaces
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 80 } }
+        - { name: lat, in: query, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lon, in: query, schema: { type: number, minimum: -180, maximum: 180 } }
+      responses:
+        "200":
+          description: Explicit place search using OpenStreetMap data, never automatic device tagging
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [places, attribution]
+                properties:
+                  places: { type: array, items: { $ref: "#/components/schemas/PlaceTag" } }
+                  attribution:
+                    type: object
+                    required: [text, url]
+                    properties:
+                      text: { type: string }
+                      url: { type: string }
+        "503":
+          description: Search unavailable; manual place tagging remains available
+  /sports/workouts:
+    get:
+      operationId: listSportsWorkouts
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+      responses:
+        "200":
+          description: Owner-only private workout history, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workouts]
+                properties:
+                  workouts: { type: array, items: { $ref: "#/components/schemas/SportsWorkout" } }
+                  nextOffset: { type: [integer, "null"] }
+  /sports/workouts/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: saveSportsWorkout
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SportsRecording" }
+      responses:
+        "200":
+          description: Idempotently saved; statistics computed on server, not supplied by client
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workout]
+                properties:
+                  workout: { $ref: "#/components/schemas/SportsWorkout" }
+        "409": { description: ID already belongs to a different recording }
+    get:
+      operationId: getSportsWorkout
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Owner-only route and summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workout]
+                properties:
+                  workout: { $ref: "#/components/schemas/SportsWorkout" }
+        "404": { description: Workout absent or not owned by viewer }
+    delete:
+      operationId: deleteSportsWorkout
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: "Private recording, exported cards and associated public sports post removed" }
+  /sports/workouts/{id}/card:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: uploadSportsCard
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Owner-only exported image, not publicly accessible until explicitly published
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cardId]
+                properties:
+                  cardId: { type: string, format: uuid }
+  /posts/{id}/sports-card:
+    get:
+      operationId: getPublishedSportsCard
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Explicitly published card image with JPEG metadata removed; no private raw route exposed
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+  /auth/cognito/config:
+    get:
+      operationId: getCognitoConfiguration
+      tags: [auth]
+      summary: Get public hosted sign-in configuration
+      responses:
+        "200":
+          description: Public configuration; never includes a client secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CognitoConfiguration"
+        "503":
+          description: Sign-in configuration is incomplete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/cognito/exchange:
+    post:
+      operationId: exchangeCognitoSession
+      tags: [auth]
+      summary: Verify a PKCE sign-in and optionally link an authenticated existing account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CognitoExchangeInput"
+      responses:
+        "200":
+          description: Verified account session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid sign-in request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in could not be verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Identity does not match the account being linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Existing account must be linked explicitly
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Sign-in provider is unavailable or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/register:
+    post:
+      operationId: registerAccount
+      tags: [auth]
+      summary: Create a cloud account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Account created and signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Username or email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many registration attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/login:
+    post:
+      operationId: loginAccount
+      tags: [auth]
+      summary: Sign in to a cloud account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid sign-in details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Email, username, or password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many sign-in attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/me:
+    get:
+      operationId: getMyAccount
+      tags: [auth]
+      summary: Get the signed-in account
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Signed-in account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyAccountResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/logout:
+    post:
+      operationId: logoutAccount
+      tags: [auth]
+      summary: End this device's session
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Session ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/password:
+    post:
+      operationId: changeAccountPassword
+      tags: [auth]
+      summary: Change the signed-in account password
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeInput"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordChangeResponse"
+        "400":
+          description: Invalid password change request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required or current password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feed:
+    get:
+      operationId: listFeed
+      tags: [social]
+      summary: Read recent cloud posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: surface
+          in: query
+          schema:
+            type: string
+            enum: [main, community, following, community-following]
+            default: main
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 30
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100000
+            default: 0
+      responses:
+        "200":
+          description: Recent posts and like state for the signed-in account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /posts:
+    post:
+      operationId: createPost
+      tags: [social]
+      summary: Publish a text post
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostInput"
+      responses:
+        "201":
+          description: Post saved to the cloud
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostCreationResult"
+        "400":
+          description: Invalid post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /posts/import:
+    post:
+      operationId: importLegacyPosts
+      tags: [social]
+      summary: Idempotently import supported posts and their confirmed media from this device
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostImportInput"
+      responses:
+        "200":
+          description: Per-post import confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostImportResponse"
+        "400":
+          description: Invalid import batch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /posts/{id}/like:
+    put:
+      operationId: likePost
+      tags: [social]
+      summary: Like a post
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Post liked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: unlikePost
+      tags: [social]
+      summary: Remove a like from a post
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Post unliked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LikeResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /posts/{id}/repost:
+    put:
+      operationId: repostPost
+      tags: [social]
+      summary: Repost a visible post or update the note on your repost
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostRepostInput"
+      responses:
+        "200":
+          description: Repost saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostRepostResponse"
+        "400":
+          description: Invalid repost note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Post not found or not visible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: removePostRepost
+      tags: [social]
+      summary: Remove your repost
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Repost removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostRepostResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Post not found or not visible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /posts/{id}:
+    get:
+      operationId: getAccountPost
+      tags: [social]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: A post visible to the signed-in account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountPostResponse"
+    delete:
+      operationId: deletePost
+      tags: [social]
+      summary: Delete one of your posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Post deleted
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /relationships/import-legacy:
+    post:
+      operationId: importLegacyRelationships
+      tags: [social]
+      summary: Import the signed-in account's device-era relationship state once
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LegacyRelationshipImportInput" }
+      responses:
+        "200":
+          description: One-time import result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [imported, migratedTargets]
+                properties:
+                  imported: { type: boolean }
+                  migratedTargets: { type: integer, minimum: 0 }
+        "400": { description: Invalid legacy relationship data }
+        "401": { description: Sign-in required }
+  /relationships:
+    get:
+      operationId: getRelationships
+      tags: [social]
+      summary: Read the signed-in account's follows, Friends, and requests
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Cloud-backed account relationships
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [following, followers, friends, incomingFriendRequests, outgoingFriendRequests, incomingFollowRequests, outgoingFollowRequests]
+                properties:
+                  following: { type: array, items: { $ref: "#/components/schemas/PublicProfile" } }
+                  followers: { type: array, items: { $ref: "#/components/schemas/PublicProfile" } }
+                  friends: { type: array, items: { $ref: "#/components/schemas/PublicProfile" } }
+                  incomingFriendRequests: { type: array, items: { $ref: "#/components/schemas/PublicProfile" } }
+                  outgoingFriendRequests: { type: array, items: { $ref: "#/components/schemas/PublicProfile" } }
+                  incomingFollowRequests: { type: array, items: { $ref: "#/components/schemas/PublicProfile" } }
+                  outgoingFollowRequests: { type: array, items: { $ref: "#/components/schemas/PublicProfile" } }
+        "401": { description: Sign-in required }
+  /relationships/follow/{targetId}:
+    parameters:
+      - { name: targetId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: followAccount
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Followed a public account or requested access to a private account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [following, requested]
+                properties:
+                  following: { type: boolean }
+                  requested: { type: boolean }
+        "400": { description: Invalid target account }
+        "403": { description: Blocked relationship }
+        "404": { description: Account not found }
+    delete:
+      operationId: unfollowAccount
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Follow or pending follow request removed }
+        "400": { description: Invalid target account }
+  /relationships/follow-requests/{requesterId}/accept:
+    parameters:
+      - { name: requesterId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: acceptFollowRequest
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Follow request accepted }
+        "403": { description: Blocked relationship }
+        "404": { description: Request not found }
+  /relationships/follow-requests/{requesterId}:
+    parameters:
+      - { name: requesterId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: dismissFollowRequest
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Request canceled or declined }
+  /relationships/friend-requests/{otherId}:
+    parameters:
+      - { name: otherId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: sendFriendRequest
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Request sent or accepted a request from this account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [requested, friends] }
+        "403": { description: Blocked relationship }
+        "404": { description: Account not found }
+    delete:
+      operationId: dismissFriendRequest
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Request canceled or declined }
+  /relationships/friend-requests/{requesterId}/accept:
+    parameters:
+      - { name: requesterId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: acceptFriendRequest
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Friend request accepted }
+        "403": { description: Blocked relationship }
+        "404": { description: Request not found }
+  /relationships/friends/{friendId}:
+    parameters:
+      - { name: friendId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: removeFriend
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Friendship removed }
+  /users/search:
+    get:
+      operationId: searchUsers
+      tags: [social]
+      summary: Search public profiles by username or display name
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 50
+      responses:
+        "200":
+          description: Matching public profiles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSearchResults"
+        "400":
+          description: Invalid search query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /profiles/{username}:
+    get:
+      operationId: getUserProfile
+      tags: [social]
+      summary: Read a public profile and its recent posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 24
+      responses:
+        "200":
+          description: Public profile and recent posts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /profiles/{username}/reposts:
+    get:
+      operationId: listProfileReposts
+      tags: [social]
+      summary: List posts reposted by a profile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 24
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 30
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100000
+            default: 0
+      responses:
+        "200":
+          description: Reposts visible to the signed-in viewer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedResponse"
+        "400":
+          description: Invalid page request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Profile not found or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /creator/center:
+    get:
+      operationId: getCreatorCenter
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Server evaluated creator progress, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorDashboard" } } } }
+  /creator/content:
+    get:
+      operationId: listMyCreatorContent
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Private owner-only synced originals
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [content]
+                properties:
+                  content: { type: array, items: { type: object, required: [id, sourceId, original], properties: { id: { type: string, format: uuid }, sourceId: { type: string }, original: { type: boolean } } } }
+    post:
+      operationId: syncCreatorOriginal
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorContentInput" } } } }
+      responses:
+        "200": { description: Original saved without publishing private content, content: { application/json: { schema: { type: object, required: [id, original], properties: { id: { type: string, format: uuid }, original: { type: boolean } } } } } }
+  /creator/content/{id}:
+    delete:
+      operationId: removeCreatorOriginal
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Credit removed; failed media cleanup is retried, content: { application/json: { schema: { type: object, required: [deleted, cleanupPending], properties: { deleted: { type: boolean }, cleanupPending: { type: boolean } } } } } }
+  /creator/content/upload:
+    post:
+      operationId: requestCreatorMediaUpload
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorMediaUploadInput" } } } }
+      responses:
+        "200": { description: Resumable private media upload reservation, content: { application/json: { schema: { type: object, required: [id, upload], properties: { id: { type: string, format: uuid }, upload: { type: object, required: [token, endpoint, bucketName, objectName], properties: { token: { type: string }, endpoint: { type: string, format: uri }, bucketName: { type: string }, objectName: { type: string } } } } } } } }
+  /posts/{postId}/comments:
+    get:
+      operationId: listCloudPostComments
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      parameters: [{ name: postId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Authenticated public-post discussion, content: { application/json: { schema: { type: object, required: [comments], properties: { comments: { type: array, items: { $ref: "#/components/schemas/CloudComment" } } } } } } }
+    post:
+      operationId: addCloudPostComment
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      parameters: [{ name: postId, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CloudCommentInput" } } } }
+      responses:
+        "200": { description: Discussion persisted, content: { application/json: { schema: { $ref: "#/components/schemas/CloudComment" } } } }
+  /posts/{postId}/comments/{commentId}:
+    delete:
+      operationId: deleteCloudPostComment
+      tags: [social]
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: commentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Owner removed comment, content: { application/json: { schema: { type: object, required: [deleted], properties: { deleted: { type: boolean } } } } } }
+  /creator/evaluate:
+    post:
+      operationId: evaluateMyCreatorEligibility
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Refreshed evaluation, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorDashboard" } } } }
+  /badge/membership:
+    get:
+      operationId: getBlueBadgeMembership
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Store verified membership, content: { application/json: { schema: { $ref: "#/components/schemas/BlueBadgeMembership" } } } }
+  /badge/membership/refresh:
+    post:
+      operationId: refreshBlueBadgeMembership
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: RevenueCat-verified membership status, content: { application/json: { schema: { $ref: "#/components/schemas/BlueBadgeMembership" } } } }
+        "502": { description: Store verification is temporarily unavailable }
+        "503": { description: Store verification is not configured }
+  /badge/interest:
+    post:
+      operationId: registerBlueBadgeInterest
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Interest saved, content: { application/json: { schema: { type: object, required: [interested], properties: { interested: { type: boolean } } } } } }
+  /creator/badges:
+    get:
+      operationId: getVerifiedBlueBadges
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: userIds, in: query, required: true, schema: { type: string, maxLength: 1850 } }
+      responses:
+        "200":
+          description: Active badge status for up to 50 accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [badges]
+                properties:
+                  badges:
+                    type: array
+                    items: { type: object, required: [userId, active], properties: { userId: { type: string, format: uuid }, active: { type: boolean } } }
+  /announcements:
+    get:
+      operationId: getAccountAnnouncements
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Eligible announcements respecting account preferences and dismissals
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [announcements, unreadCount]
+                properties:
+                  announcements: { type: array, items: { $ref: "#/components/schemas/AnnouncementCampaign" } }
+                  unreadCount: { type: integer }
+                  optionalTipsEnabled: { type: boolean }
+  /announcements/{id}/dismiss:
+    post:
+      operationId: dismissAccountAnnouncement
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, maxLength: 80 } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnnouncementDismissInput" } } }
+      responses:
+        "200": { description: Dismissal saved, content: { application/json: { schema: { type: object, required: [dismissed], properties: { dismissed: { type: boolean } } } } } }
+  /announcements/{id}/event:
+    post:
+      operationId: recordAnnouncementEvent
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, maxLength: 80 } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnnouncementEventInput" } } }
+      responses:
+        "200": { description: Deduplicated event recorded, content: { application/json: { schema: { type: object, required: [recorded], properties: { recorded: { type: boolean } } } } } }
+  /announcements/reset:
+    post:
+      operationId: resetAnnouncementDismissals
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Optional dismissals reset, content: { application/json: { schema: { type: object, required: [reset], properties: { reset: { type: boolean } } } } } }
+  /announcement-preferences:
+    get:
+      operationId: getAnnouncementPreferences
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Saved account preferences, content: { application/json: { schema: { $ref: "#/components/schemas/AnnouncementPreferences" } } } }
+    put:
+      operationId: updateAnnouncementPreferences
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AnnouncementPreferences" } } } }
+      responses:
+        "200": { description: Preferences saved, content: { application/json: { schema: { $ref: "#/components/schemas/AnnouncementPreferences" } } } }
+  /creator/admin/config:
+    get:
+      operationId: getCreatorProgramConfig
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Authorized administrative configuration, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorProgramConfig" } } } }
+    put:
+      operationId: updateCreatorProgramConfig
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorProgramConfig" } } } }
+      responses:
+        "200": { description: Configuration updated, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorProgramConfig" } } } }
+  /creator/admin/analytics:
+    get:
+      operationId: getCreatorProgramAnalytics
+      tags: [creator]
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Aggregate creator program usage, content: { application/json: { schema: { $ref: "#/components/schemas/CreatorProgramAnalytics" } } } }
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /account/professional:
+    get:
+      operationId: getAccountProfessional
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Own account tools and professional fields, content: { application/json: { schema: { $ref: "#/components/schemas/AccountProfessional" } } } }
+    put:
+      operationId: updateAccountProfessional
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AccountProfessional" } } }
+      responses:
+        "200": { description: Classification saved without changing identity or privileges, content: { application/json: { schema: { $ref: "#/components/schemas/AccountProfessional" } } } }
+        "400": { description: Unsupported fields or invalid category }
+  /analytics/me:
+    get:
+      operationId: getOwnAnalytics
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: mode, in: query, schema: { type: string, enum: [personal, creator, business] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: metric, in: query, schema: { type: string, enum: [views, profileVisits, follows, engagement] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, maximum: 500 } }
+        - { name: type, in: query, schema: { type: string, enum: [all, text, photo, video, story, blast] } }
+        - { name: sort, in: query, schema: { type: string, enum: [recent, views, engagement] } }
+      responses:
+        "200": { description: Measured owner-only analytics, content: { application/json: { schema: { $ref: "#/components/schemas/OwnAnalyticsReport" } } } }
+        "403": { description: Professional dashboard requires matching account classification }
+  /analytics/content/{id}:
+    get:
+      operationId: getOwnContentAnalytics
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        "200": { description: Owner-only content insights, content: { application/json: { schema: { $ref: "#/components/schemas/ContentAnalytics" } } } }
+        "404": { description: Content missing or not owned }
+  /analytics/resources:
+    post:
+      operationId: registerOwnAnalyticsContent
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnalyticsResourceInput" } } }
+      responses:
+        "200": { description: Own metadata registered, content: { application/json: { schema: { $ref: "#/components/schemas/AnalyticsSessionIdentity" } } } }
+  /analytics/resources/{sourceId}:
+    delete:
+      operationId: removeOwnAnalyticsContent
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: sourceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Content excluded from future tracking }
+  /analytics/sessions:
+    post:
+      operationId: startAnalyticsView
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnalyticsStartInput" } } }
+      responses:
+        "200": { description: Server-timed view session; null for self-views, content: { application/json: { schema: { $ref: "#/components/schemas/AnalyticsSessionIdentity" } } } }
+  /analytics/sessions/{id}:
+    put:
+      operationId: updateAnalyticsPlayback
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnalyticsPlaybackInput" } } }
+      responses:
+        "200": { description: Validated playback updated }
+        "404": { description: Session not owned by actor or content no longer available }
+  /analytics/events:
+    post:
+      operationId: recordAnalyticsActivity
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AnalyticsActivityInput" } } }
+      responses:
+        "200": { description: Activity recorded or deduplicated }
+        "400": { description: Unsupported event or client financial submission }
+  /account/privacy:
+    get:
+      operationId: getAccountPrivacy
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Cloud-backed profile privacy settings, content: { application/json: { schema: { $ref: "#/components/schemas/AccountPrivacyResponse" } } } }
+    put:
+      operationId: updateAccountPrivacy
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateAccountPrivacyInput" } } }
+      responses:
+        "200": { description: Privacy settings saved, content: { application/json: { schema: { $ref: "#/components/schemas/AccountPrivacyResponse" } } } }
+  /account/blocks:
+    get:
+      operationId: listAccountBlocks
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: The signed-in account's private block list, content: { application/json: { schema: { $ref: "#/components/schemas/CloseFriendsResponse" } } } }
+    put:
+      operationId: replaceAccountBlocks
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateAccountBlocksInput" } } }
+      responses:
+        "200": { description: Account block list saved, content: { application/json: { schema: { $ref: "#/components/schemas/CloseFriendsResponse" } } } }
+        "400": { description: Invalid or unknown account IDs }
+  /close-friends:
+    get:
+      operationId: listCloseFriends
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: The signed-in account's private Close Friends list, content: { application/json: { schema: { $ref: "#/components/schemas/CloseFriendsResponse" } } } }
+    put:
+      operationId: replaceCloseFriends
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateCloseFriendsInput" } } }
+      responses:
+        "200": { description: Close Friends list saved, content: { application/json: { schema: { $ref: "#/components/schemas/CloseFriendsResponse" } } } }
+        "400": { description: Invalid or unknown account IDs }
+  /chats:
+    get:
+      operationId: listChats
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Conversations for the signed-in user, content: { application/json: { schema: { $ref: "#/components/schemas/ChatRoomsResponse" } } } }
+    post:
+      operationId: createChat
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ChatRoomInput" } } }
+      responses:
+        "201": { description: Conversation created or already present, content: { application/json: { schema: { $ref: "#/components/schemas/ChatRoomResponse" } } } }
+        "400": { description: Invalid members or blocked account }
+        "409": { description: Conversation ID belongs to another account }
+  /chats/legacy-archives:
+    get:
+      operationId: listLegacyChatArchives
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Private archives of conversations previously stored on this device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegacyChatArchivesResponse"
+        "401": { description: Sign-in required }
+  /chats/legacy-archives/{sourceId}/{part}:
+    parameters:
+      - { name: sourceId, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 80 } }
+      - { name: part, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 99 } }
+    put:
+      operationId: saveLegacyChatArchivePart
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LegacyChatArchivePartInput"
+      responses:
+        "200":
+          description: Archive part already exists with the same verified content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegacyChatArchivePartResponse"
+        "201":
+          description: Archive part saved privately
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegacyChatArchivePartResponse"
+        "400": { description: Invalid or oversized archive part }
+        "401": { description: Sign-in required }
+        "409": { description: Archive part conflicts with a different stored copy }
+  /chats/legacy-archives/{sourceId}:
+    parameters:
+      - { name: sourceId, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 80 } }
+    delete:
+      operationId: deleteLegacyChatArchive
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: The signed-in owner's private archive was deleted }
+        "401": { description: Sign-in required }
+        "404": { description: Archive not found }
+  /chats/{id}/messages:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 80 } }
+    get:
+      operationId: listChatMessages
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Recent messages for a conversation member, content: { application/json: { schema: { $ref: "#/components/schemas/ChatMessagesResponse" } } } }
+        "404": { description: Conversation not found or not a member }
+    post:
+      operationId: createChatMessage
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ChatMessageInput" } } }
+      responses:
+        "201": { description: Text message persisted and acknowledged, content: { application/json: { schema: { $ref: "#/components/schemas/ChatMessageResponse" } } } }
+        "400": { description: Invalid or unsupported message body }
+        "404": { description: Conversation not found or not a member }
+  /chats/{id}/messages/{messageId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 80 } }
+      - { name: messageId, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 80 } }
+    patch:
+      operationId: editChatMessage
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ChatMessageEditInput" } } }
+      responses:
+        "200": { description: Message edited, content: { application/json: { schema: { $ref: "#/components/schemas/ChatMessageResponse" } } } }
+        "400": { description: Invalid edit }
+        "404": { description: Message not found or not owned by the signed-in user }
+    delete:
+      operationId: deleteChatMessage
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: The signed-in author's message was removed from the conversation }
+        "404": { description: Message not found or not owned by the signed-in user }
+  /chats/{id}/state:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 80 } }
+    put:
+      operationId: updateChatMemberState
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ChatMemberStateInput" } } }
+      responses:
+        "200": { description: The signed-in member's conversation state was saved, content: { application/json: { schema: { $ref: "#/components/schemas/ChatMemberStateResponse" } } } }
+        "400": { description: Invalid conversation state }
+        "404": { description: Conversation not found }
+  /chats/{id}/read:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, minLength: 3, maxLength: 80 } }
+    post:
+      operationId: markChatRead
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ChatReadReceiptInput" } } }
+      responses:
+        "204": { description: Read state saved for the signed-in member }
+        "404": { description: Conversation not found }
+  /creative/drafts/{context}:
+    parameters:
+      - { name: context, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 120, pattern: "^[a-z0-9:_-]+$" } }
+    get:
+      operationId: getCreativeDraft
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Owner's cloud draft, if present
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreativeDraftResponse" }
+    put:
+      operationId: putCreativeDraft
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreativeDraft" } } }
+      responses:
+        "200": { description: Draft saved to the signed-in account }
+        "400": { description: Invalid draft or unconfirmed media }
+    delete:
+      operationId: deleteCreativeDraft
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Owner’s draft removed }
+  /media/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getPrivateMedia
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Owner-only private media
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        "404": { description: Media does not exist or is not owned by the viewer }
+    delete:
+      operationId: deletePrivateMedia
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Owner-only media removed from private storage }
+        "404": { description: Media does not exist or is not owned by the viewer }
+  /media/{id}/upload:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: reservePrivateMediaUpload
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PrivateMediaUploadInput" } } }
+      responses:
+        "200": { description: Existing upload reservation or already confirmed media }
+        "201": { description: Resumable upload reservation created }
+        "400": { description: Unsupported media metadata }
+        "409": { description: Media ID conflicts with an existing upload }
+        "503": { description: Supabase could not create the signed upload session }
+  /media/{id}/confirm:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: confirmPrivateMediaUpload
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PrivateMediaUploadConfirm" } } }
+      responses:
+        "200": { description: Supabase Storage verified the upload }
+        "404": { description: Upload reservation not found }
+        "409": { description: The uploaded object does not match the reservation }
+        "503": { description: Supabase has not confirmed the upload yet }
+  /media/{id}/url:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getPrivateMediaUrl
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Short-lived signed URL for authorized media }
+        "404": { description: Media does not exist or is not visible to the viewer }
+  /blast/state/{scope}:
+    parameters:
+      - { name: scope, in: path, required: true, schema: { type: string, enum: [social, video-notes] } }
+    get:
+      operationId: getBlastAccountState
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Owner-only cloud state for Blast
+          content: { application/json: { schema: { $ref: "#/components/schemas/BlastStateResponse" } } }
+        "400": { description: Invalid state scope }
+    put:
+      operationId: putBlastAccountState
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BlastStateInput" } } }
+      responses:
+        "200":
+          description: Blast state saved with the next revision
+          content: { application/json: { schema: { $ref: "#/components/schemas/BlastStateSaved" } } }
+        "400": { description: Invalid state or attachment }
+        "409": { description: State changed in another session }
+        "413": { description: State exceeds the storage limit }
+    delete:
+      operationId: deletePrivateMedia
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Owner-only media removed from private storage }
+        "404": { description: Media does not exist or is not owned by the viewer }
+  /stories:
+    get:
+      operationId: listStories
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Active stories visible to the signed-in account, content: { application/json: { schema: { $ref: "#/components/schemas/StoriesResponse" } } } }
+    post:
+      operationId: createStory
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateStoryInput" } } }
+      responses:
+        "201": { description: Story metadata saved, content: { application/json: { schema: { $ref: "#/components/schemas/StoryResponse" } } } }
+        "400": { description: Invalid story }
+  /stories/import:
+    post:
+      operationId: importLegacyStory
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StoryImportInput" } } }
+      responses:
+        "200": { description: Legacy Story stored or matched idempotently, content: { application/json: { schema: { $ref: "#/components/schemas/StoryImportResponse" } } } }
+        "400": { description: Invalid legacy Story }
+        "409": { description: Existing Story conflicts with the submitted source record }
+  /stories/{id}/media:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: uploadStoryMedia
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Private story media uploaded }
+        "400": { description: Invalid media or story }
+    get:
+      operationId: readStoryMedia
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Private media for an active story visible to the signed-in account, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "404": { description: Story not found or not visible }
+  /stories/{id}/media-url:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getStoryMediaUrl
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Short-lived signed link for media on a visible Story }
+        "404": { description: Story not found or not visible }
+        "503": { description: Story media could not be loaded }
+  /stories/{id}/views:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: recordStoryView
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: View recorded once for this account, content: { application/json: { schema: { $ref: "#/components/schemas/StoryViewResponse" } } } }
+        "404": { description: Story not found or not visible }
+  /stories/{id}/reactions:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: upsertStoryReaction
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StoryReactionInput" } } }
+      responses:
+        "200": { description: Reaction saved, content: { application/json: { schema: { $ref: "#/components/schemas/StoryReactionResponse" } } } }
+        "409": { description: The signed-in account cannot react to its own Story }
+        "404": { description: Story not found or not visible }
+    delete:
+      operationId: deleteStoryReaction
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Current user's reaction removed }
+        "404": { description: Story not found or not visible }
+  /stories/{id}/activity:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getStoryActivity
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Story views and reactions visible only to the Story owner, content: { application/json: { schema: { $ref: "#/components/schemas/StoryActivityResponse" } } } }
+        "404": { description: Story not owned by the signed-in account }
+  /stories/{id}/comments:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listStoryComments
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Replies for a Story visible to the signed-in account, content: { application/json: { schema: { $ref: "#/components/schemas/StoryCommentsResponse" } } } }
+        "404": { description: Story not found or not visible }
+    post:
+      operationId: createStoryComment
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StoryCommentInput" } } }
+      responses:
+        "201": { description: Reply sent, content: { application/json: { schema: { $ref: "#/components/schemas/StoryCommentResponse" } } } }
+        "400": { description: Invalid reply or replies disabled }
+        "409": { description: Reply is disabled or the Story has expired }
+        "404": { description: Story not found or not visible }
+  /stories/{id}/comments/{commentId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: commentId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: deleteStoryComment
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Reply deleted by its author or Story owner }
+        "404": { description: Reply not found or not authorized }
+  /stories/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updateStory
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateStoryInput" } } }
+      responses:
+        "200": { description: Story settings updated, content: { application/json: { schema: { $ref: "#/components/schemas/StoryResponse" } } } }
+        "404": { description: Story not owned by the signed-in account }
+    delete:
+      operationId: deleteStory
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Story and its private media deleted }
+        "404": { description: Story not owned by the signed-in account }
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    AccountPostResponse:
+      type: object
+      required: [post]
+      properties:
+        post:
+          $ref: "#/components/schemas/SocialPost"
+    NotificationReadInput:
+      type: object
+      required: [through]
+      properties:
+        through: { type: number, minimum: 0 }
+    AccountNotification:
+      type: object
+      required: [id, kind, body, actor, postId, storyId, commentId, createdAt, read]
+      properties:
+        id: { type: string }
+        kind: { type: string }
+        body: { type: string }
+        actor:
+          type: object
+          required: [id, username, displayName, avatar]
+          properties:
+            id: { type: string }
+            username: { type: string }
+            displayName: { type: string }
+            avatar: { type: ["string", "null"] }
+        postId: { type: ["string", "null"] }
+        storyId: { type: ["string", "null"] }
+        commentId: { type: ["string", "null"] }
+        createdAt: { type: number }
+        read: { type: boolean }
+    NotificationFeed:
+      type: object
+      required: [notifications, readAt, nextBefore]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountNotification"
+        readAt: { type: number }
+        nextBefore: { type: ["number", "null"] }
+    LegacyRelationshipImportInput:
+      type: object
+      properties:
+        followingIds: { type: array, maxItems: 2000, items: { type: string, format: uuid } }
+        friendIds: { type: array, maxItems: 2000, items: { type: string, format: uuid } }
+        outgoingFriendRequestIds: { type: array, maxItems: 2000, items: { type: string, format: uuid } }
+        outgoingFollowRequestIds: { type: array, maxItems: 2000, items: { type: string, format: uuid } }
+    ChatPerson:
+      type: object
+      required: [id, username, displayName]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        lastReadAt: { type: integer, nullable: true }
+    ChatRoom:
+      type: object
+      required: [id, title, members, createdAt, state]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        members: { type: array, items: { $ref: "#/components/schemas/ChatPerson" } }
+        createdAt: { type: integer }
+        state: { $ref: "#/components/schemas/ChatMemberState" }
+    ChatRoomInput:
+      type: object
+      additionalProperties: false
+      required: [id, members]
+      properties:
+        id: { type: string, minLength: 3, maxLength: 80, pattern: "^cv[a-zA-Z0-9-]+$" }
+        title: { type: string, maxLength: 80 }
+        members: { type: array, minItems: 2, maxItems: 16, uniqueItems: true, items: { type: string, format: uuid } }
+    ChatRoomResponse:
+      type: object
+      required: [chat]
+      properties:
+        chat: { $ref: "#/components/schemas/ChatRoom" }
+    ChatRoomsResponse:
+      type: object
+      required: [chats]
+      properties:
+        chats: { type: array, items: { $ref: "#/components/schemas/ChatRoom" } }
+    LegacyChatArchivePart:
+      type: object
+      required: [sourceId, part, totalParts, contentHash, payload, createdAt]
+      properties:
+        sourceId: { type: string }
+        part: { type: integer }
+        totalParts: { type: integer }
+        contentHash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        payload: { type: object, additionalProperties: true }
+        createdAt: { type: integer, format: int64 }
+    LegacyChatArchivesResponse:
+      type: object
+      required: [archives]
+      properties:
+        archives: { type: array, items: { $ref: "#/components/schemas/LegacyChatArchivePart" } }
+    LegacyChatArchivePartInput:
+      type: object
+      additionalProperties: false
+      required: [totalParts, contentHash, payload]
+      properties:
+        totalParts: { type: integer, minimum: 1, maximum: 100 }
+        contentHash: { type: string, pattern: "^[0-9a-f]{64}$" }
+        payload: { type: object, additionalProperties: true }
+    LegacyChatArchivePartResponse:
+      type: object
+      required: [status, archive]
+      properties:
+        status: { type: string, enum: [imported, already-imported] }
+        archive: { $ref: "#/components/schemas/LegacyChatArchivePart" }
+    ChatMessage:
+      type: object
+      required: [id, conversationId, author, kind, body, createdAt]
+      properties:
+        id: { type: string }
+        conversationId: { type: string }
+        author: { $ref: "#/components/schemas/ChatPerson" }
+        kind: { type: string, enum: [text, photo, video, gif, voice, file, sticker, poll, location, contact, call, shared-post, system] }
+        body: { type: string }
+        createdAt: { type: integer }
+        metadata: { type: object, additionalProperties: true }
+        media: { type: array, items: { $ref: "#/components/schemas/ChatMessageMedia" } }
+        readBy: { type: array, items: { type: string, format: uuid } }
+        status: { type: string, enum: [sent, read] }
+        reactions: { type: object, additionalProperties: { type: array, items: { type: string, format: uuid } } }
+        poll:
+          type: object
+          required: [question, options, votes]
+          properties:
+            question: { type: string }
+            options: { type: array, items: { type: string } }
+            votes: { type: object, additionalProperties: { type: array, items: { type: string, format: uuid } } }
+        edited: { type: boolean }
+        editedAt: { type: integer }
+        editHistory: { type: array, items: { type: string } }
+    ChatMessageMedia:
+      type: object
+      required: [reference, contentType, size]
+      properties:
+        reference: { type: string }
+        contentType: { type: string }
+        size: { type: integer, minimum: 0 }
+    ChatMessageInput:
+      type: object
+      additionalProperties: false
+      required: [clientId, kind, body]
+      properties:
+        clientId: { type: string, minLength: 3, maxLength: 80 }
+        kind: { type: string, enum: [text, photo, video, gif, voice, file, sticker, poll, location, contact, call, shared-post] }
+        body: { type: string, maxLength: 5000 }
+        metadata: { type: object, additionalProperties: true }
+        mediaIds: { type: array, maxItems: 4, uniqueItems: true, items: { type: string, format: uuid } }
+    ChatMessageEditInput:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 5000 }
+    ChatMemberState:
+      type: object
+      properties:
+        draft: { type: string, maxLength: 5000 }
+        pinnedIds: { type: array, maxItems: 3, items: { type: string, maxLength: 80 } }
+        savedMessageIds: { type: array, maxItems: 1000, items: { type: string, maxLength: 80 } }
+        hiddenMessageIds: { type: array, maxItems: 2000, items: { type: string, maxLength: 80 } }
+        keptMessageIds: { type: array, maxItems: 1000, items: { type: string, maxLength: 80 } }
+        disappear: { type: string, enum: [off, 10 seconds, 24 hours, after view] }
+        mutedUntil: { type: integer, minimum: 0 }
+        wallpaper: { type: string, enum: ["", "#e7f6e9"] }
+        locked: { type: boolean }
+        shareReceipts: { type: boolean }
+        reactions: { type: object, additionalProperties: { type: array, maxItems: 7, items: { type: string, maxLength: 16 } } }
+        pollVotes: { type: object, additionalProperties: { type: integer, minimum: 0, maximum: 9 } }
+    ChatMemberStateInput:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: { $ref: "#/components/schemas/ChatMemberState" }
+    ChatMemberStateResponse:
+      type: object
+      required: [state]
+      properties:
+        state: { $ref: "#/components/schemas/ChatMemberState" }
+    ChatReadReceiptInput:
+      type: object
+      additionalProperties: false
+      properties:
+        shareReceipts: { type: boolean, default: true }
+    ChatMessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { $ref: "#/components/schemas/ChatMessage" }
+    ChatMessagesResponse:
+      type: object
+      required: [messages]
+      properties:
+        messages: { type: array, items: { $ref: "#/components/schemas/ChatMessage" } }
+    TournamentJoin:
+      type: object
+      additionalProperties: false
+      properties:
+        teamId: { type: string, format: uuid }
+    TournamentEmptyAction:
+      type: object
+      additionalProperties: false
+    TournamentInvitation:
+      type: object
+      additionalProperties: false
+      required: [userId]
+      properties:
+        userId: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
+    TournamentSupport:
+      type: object
+      additionalProperties: false
+      required: [participantId]
+      properties:
+        participantId: { type: string, format: uuid }
+    TournamentPerson:
+      type: object
+      required: [id, username, displayName, avatarUrl]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+    TournamentStanding:
+      type: object
+      required: [id, name, teamId, participantId, score, percentage, rank, members]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        teamId: { type: [string, "null"], format: uuid }
+        participantId: { type: [string, "null"], format: uuid }
+        score: { type: integer, minimum: 0 }
+        percentage: { type: number, minimum: 0, maximum: 100 }
+        rank: { type: integer, minimum: 1 }
+        members: { type: array, items: { $ref: "#/components/schemas/TournamentPerson" } }
+    TournamentParticipant:
+      type: object
+      required: [id, userId, role, status, teamId, user, score, percentage]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        role: { type: string, enum: [competitor, featured] }
+        status: { type: string, enum: [invited, accepted, declined] }
+        teamId: { type: [string, "null"], format: uuid }
+        user: { $ref: "#/components/schemas/TournamentPerson" }
+        score: { type: integer }
+        percentage: { type: number }
+    TournamentInput:
+      type: object
+      additionalProperties: false
+      required: [title, description, rules, hostingType, visibility, durationMinutes, startsAt, goal]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 100 }
+        description: { type: string, minLength: 5, maxLength: 2000 }
+        rules: { type: string, minLength: 5, maxLength: 3000 }
+        hostingType: { type: string, enum: [self, person, friend, team, community] }
+        visibility: { type: string, enum: [public, invite_only] }
+        durationMinutes: { type: integer, enum: [30, 120, 720, 1440] }
+        startsAt: { type: string, format: date-time }
+        goal: { type: integer, minimum: 1, maximum: 100000 }
+        featuredUserId: { type: string, format: uuid }
+        teamNames: { type: array, minItems: 2, maxItems: 8, items: { type: string, minLength: 2, maxLength: 40 } }
+    Tournament:
+      type: object
+      required: [id, title, description, rules, hostingType, visibility, scoringMethod, goal, status, startsAt, endsAt, createdAt, host, featuredParticipantId, format, participantCount, participants, teams, standings, recentActivity, finalResults, canManage, myParticipation, mySupport, canJoin, canSupport, serverNow]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        rules: { type: string }
+        hostingType: { type: string, enum: [self, person, friend, team, community] }
+        visibility: { type: string, enum: [public, invite_only] }
+        scoringMethod: { type: string, enum: [verified_support] }
+        goal: { type: integer }
+        status: { type: string, enum: [awaiting_consent, upcoming, active, completed, cancelled] }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        host: { $ref: "#/components/schemas/TournamentPerson" }
+        featuredParticipantId: { type: [string, "null"], format: uuid, description: Featured user account ID, not roster entry ID }
+        format: { type: string, enum: [individual, team] }
+        participantCount: { type: integer }
+        participants: { type: array, items: { $ref: "#/components/schemas/TournamentParticipant" } }
+        teams:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+        standings: { type: array, items: { $ref: "#/components/schemas/TournamentStanding" } }
+        finalResults: { type: [array, "null"], items: { $ref: "#/components/schemas/TournamentStanding" } }
+        recentActivity:
+          type: array
+          items:
+            type: object
+            required: [id, action, createdAt, actor]
+            properties:
+              id: { type: string, format: uuid }
+              action: { type: string }
+              createdAt: { type: string, format: date-time }
+              actor:
+                anyOf:
+                  - { $ref: "#/components/schemas/TournamentPerson" }
+                  - { type: "null" }
+        canManage: { type: boolean }
+        myParticipation:
+          anyOf:
+            - { $ref: "#/components/schemas/TournamentParticipant" }
+            - { type: "null" }
+        mySupport:
+          type: [object, "null"]
+          required: [participantId]
+          properties:
+            participantId: { type: string, format: uuid }
+        canJoin: { type: boolean }
+        canSupport: { type: boolean }
+        serverNow: { type: string, format: date-time }
+    ParticipationEntryUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        caption: { type: string, maxLength: 2000 }
+        place:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/PlaceTag"
+        pinned: { type: boolean }
+        removed: { type: boolean }
+    ParticipationBoardInput:
+      type: object
+      additionalProperties: false
+      required: [prompt, format, category, visibility, rules, commentsEnabled]
+      properties:
+        prompt: { type: string, minLength: 3, maxLength: 180 }
+        format: { type: string, enum: [photo, video, text, mixed] }
+        category: { type: string, enum: [creative, sports, music, places, friends, funny] }
+        visibility: { type: string, enum: [public, invite_only, private] }
+        rules: { type: string, maxLength: 1000 }
+        commentsEnabled: { type: boolean }
+    ParticipationBoard:
+      type: object
+      required: [id, creatorId, prompt, format, category, visibility, status, rules, commentsEnabled, createdAt, entryCount, participantCount, creator, canManage]
+      properties:
+        id: { type: string, format: uuid }
+        creatorId: { type: string, format: uuid }
+        prompt: { type: string }
+        format: { type: string, enum: [photo, video, text, mixed] }
+        category: { type: string, enum: [creative, sports, music, places, friends, funny] }
+        visibility: { type: string, enum: [public, invite_only, private] }
+        status: { type: string, enum: [open, closed] }
+        rules: { type: string }
+        commentsEnabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        entryCount: { type: integer, minimum: 0 }
+        participantCount: { type: integer, minimum: 0 }
+        creator:
+          type: object
+          required: [id, username, displayName]
+          properties:
+            id: { type: string, format: uuid }
+            username: { type: string }
+            displayName: { type: [string, "null"] }
+        canManage: { type: boolean }
+    ParticipationBoardListResult:
+      type: object
+      required: [boards, hasMore]
+      properties:
+        boards: { type: array, items: { $ref: "#/components/schemas/ParticipationBoard" } }
+        hasMore: { type: boolean }
+    ParticipationBoardDetailResult:
+      type: object
+      required: [board, entries, hasMore]
+      properties:
+        board: { $ref: "#/components/schemas/ParticipationBoard" }
+        entries: { type: array, items: { $ref: "#/components/schemas/ParticipationEntryResult" } }
+        hasMore: { type: boolean }
+    ParticipationEntryInput:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        caption: { type: string, maxLength: 2000, default: "" }
+        place:
+          type: ["object", "null"]
+          allOf:
+            - $ref: "#/components/schemas/PlaceTag"
+    ParticipationEntryResult:
+      type: object
+      required: [id, boardId, caption, mediaType, likes, likedByMe, canDelete, canManage, author]
+      properties:
+        id: { type: string, format: uuid }
+        boardId: { type: string, format: uuid }
+        caption: { type: string }
+        mediaType: { type: string, enum: [photo, image, video, text] }
+        mediaPath: { type: string, nullable: true }
+        place:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/PlaceTag"
+        pinned: { type: boolean }
+        removed: { type: boolean }
+        likes: { type: integer }
+        likedByMe: { type: boolean }
+        canDelete: { type: boolean }
+        canManage: { type: boolean }
+        author:
+          type: object
+          required: [id, username]
+          properties:
+            id: { type: string, format: uuid }
+            username: { type: string }
+            displayName: { type: string, nullable: true }
+    AccountProfessional:
+      type: object
+      additionalProperties: false
+      required: [accountType, creatorCategory, businessCategory, website, location, contact, showCategory, showContact]
+      properties:
+        accountType: { type: string, enum: [personal, creator, business] }
+        creatorCategory: { type: [string, "null"], enum: [Creator, Artist, Musician, Public Figure, Streamer, Writer, Athlete, Community Leader, null] }
+        businessCategory: { type: [string, "null"], enum: [Business, Local Service, Retail, Restaurant, Brand, Other, null] }
+        website: { type: string, maxLength: 500 }
+        location: { type: string, maxLength: 160 }
+        contact: { type: string, maxLength: 160 }
+        showCategory: { type: boolean }
+        showContact: { type: boolean }
+    AnalyticsResourceInput:
+      type: object
+      additionalProperties: false
+      required: [sourceId, kind, title, isPublic, durationMs, publishedAt]
+      properties:
+        sourceId: { type: string, minLength: 1, maxLength: 160 }
+        kind: { type: string, enum: [text, photo, video, story, blast] }
+        title: { type: string, maxLength: 100 }
+        isPublic: { type: boolean }
+        durationMs: { type: [integer, "null"], minimum: 1, maximum: 600000 }
+        publishedAt: { type: integer }
+    AnalyticsStartInput:
+      type: object
+      additionalProperties: false
+      required: [ownerId, sourceId, nonce, source]
+      properties:
+        ownerId: { type: string, format: uuid }
+        sourceId: { type: string, maxLength: 160 }
+        nonce: { type: string, format: uuid }
+        source: { type: string, enum: [feed, following, profile, search, content, blast, community, shared-link, direct] }
+    AnalyticsSessionIdentity:
+      type: object
+      required: [id]
+      properties:
+        id: { type: [string, "null"], format: uuid }
+    AnalyticsPlaybackInput:
+      type: object
+      additionalProperties: false
+      required: [visibleMs, watchedMs, progress, ended]
+      properties:
+        visibleMs: { type: integer, minimum: 0, maximum: 600000 }
+        watchedMs: { type: integer, minimum: 0, maximum: 600000 }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        ended: { type: boolean }
+    AnalyticsActivityInput:
+      type: object
+      additionalProperties: false
+      required: [ownerId, sourceId, kind, source, nonce]
+      properties:
+        ownerId: { type: string, format: uuid }
+        sourceId: { type: [string, "null"], maxLength: 160 }
+        nonce: { type: string, format: uuid }
+        kind: { type: string, enum: [profile_visit, impression, like, comment, share, save, follow, unfollow] }
+        source: { type: string, enum: [feed, following, profile, search, content, blast, community, shared-link, direct] }
+    AnalyticsOverview:
+      type: object
+      additionalProperties: { type: [number, "null"] }
+    AnalyticsSeriesItem:
+      type: object
+      required: [day, views, profileVisits, follows, engagement]
+      properties:
+        day: { type: string, format: date }
+        views: { type: integer }
+        profileVisits: { type: integer }
+        follows: { type: integer }
+        engagement: { type: integer }
+    ContentAnalytics:
+      type: object
+      additionalProperties: true
+      required: [id, sourceId, title, kind, createdAt, views, uniqueViewers, retention, sources]
+      properties:
+        id: { type: string, format: uuid }
+        sourceId: { type: string }
+        title: { type: string }
+        kind: { type: string }
+        createdAt: { type: number }
+        views: { type: integer }
+        uniqueViewers: { type: integer }
+        retention: { type: array, items: { type: object, required: [percent, value], properties: { percent: { type: number }, value: { type: number } } } }
+        sources: { type: array, items: { type: object, required: [source, views], properties: { source: { type: string }, views: { type: integer } } } }
+    OwnAnalyticsReport:
+      type: object
+      required: [accountType, range, overview, comparison, series, content, hasMore, audience, growth, earnings, unavailable, definitions, trackingSince]
+      properties:
+        accountType: { type: string }
+        range: { type: object, required: [from, to], properties: { from: { type: string }, to: { type: string } } }
+        overview: { $ref: "#/components/schemas/AnalyticsOverview" }
+        comparison: { $ref: "#/components/schemas/AnalyticsOverview" }
+        series: { type: array, items: { $ref: "#/components/schemas/AnalyticsSeriesItem" } }
+        content: { type: array, items: { $ref: "#/components/schemas/ContentAnalytics" } }
+        hasMore: { type: boolean }
+        audience: { type: object, additionalProperties: true }
+        growth: { type: array, items: { type: object, required: [text, reason], properties: { text: { type: string }, reason: { type: string } } } }
+        earnings: { type: object, required: [available, reason], properties: { available: { type: boolean }, reason: { type: string } } }
+        unavailable: { type: array, items: { type: string } }
+        definitions: { type: object, additionalProperties: { type: string } }
+        trackingSince: { type: number }
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+    AccountPrivacyResponse:
+      type: object
+      properties:
+        isPrivate: { type: boolean }
+        initialized: { type: boolean }
+      required: [isPrivate, initialized]
+    UpdateAccountPrivacyInput:
+      type: object
+      properties:
+        isPrivate: { type: boolean }
+      required: [isPrivate]
+    CloseFriendProfile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        joinedAt: { type: integer, minimum: 0 }
+      required: [id, username, displayName, joinedAt]
+    CloseFriendsResponse:
+      type: object
+      properties:
+        profiles: { type: array, items: { $ref: "#/components/schemas/CloseFriendProfile" } }
+      required: [profiles]
+    UpdateCloseFriendsInput:
+      type: object
+      properties:
+        memberIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items: { type: string, format: uuid }
+      required: [memberIds]
+    UpdateAccountBlocksInput:
+      type: object
+      properties:
+        userIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items: { type: string, format: uuid }
+      required: [userIds]
+    Story:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sourceId: { type: string }
+        text: { type: string }
+        visibility: { type: string, enum: [public, followers, friends, close-friends] }
+        createdAt: { type: integer, minimum: 0 }
+        expiresAt: { type: integer, minimum: 0 }
+        savedToProfile: { type: boolean }
+        mediaType: { type: string, enum: [photo, video], nullable: true }
+        hasMedia: { type: boolean }
+        commentsEnabled: { type: boolean }
+        author: { $ref: "#/components/schemas/CloseFriendProfile" }
+        viewerReaction: { type: string, nullable: true }
+      required: [id, text, visibility, createdAt, expiresAt, savedToProfile, hasMedia, commentsEnabled, author, viewerReaction]
+    StoriesResponse:
+      type: object
+      properties:
+        stories: { type: array, items: { $ref: "#/components/schemas/Story" } }
+      required: [stories]
+    StoryResponse:
+      type: object
+      properties:
+        story: { $ref: "#/components/schemas/Story" }
+      required: [story]
+    CreateStoryInput:
+      type: object
+      properties:
+        text: { type: string, maxLength: 2000 }
+        visibility: { type: string, enum: [public, followers, friends, close-friends] }
+        mediaType: { type: string, enum: [photo, video] }
+        mediaId: { type: string, format: uuid }
+        commentsEnabled: { type: boolean }
+      required: [text, visibility]
+    PrivateMediaUploadInput:
+      type: object
+      additionalProperties: false
+      properties:
+        contentType: { type: string }
+        size: { type: integer, minimum: 5 }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+      required: [contentType, size, sha256]
+    PrivateMediaUploadConfirm:
+      type: object
+      additionalProperties: false
+      properties:
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+      required: [sha256]
+    StoryImportInput:
+      type: object
+      additionalProperties: false
+      properties:
+        sourceId: { type: string, minLength: 1, maxLength: 180 }
+        text: { type: string, maxLength: 2000 }
+        visibility: { type: string, enum: [public, followers, friends, close-friends] }
+        mediaType: { type: string, enum: [photo, video] }
+        mediaId: { type: string, format: uuid }
+        commentsEnabled: { type: boolean }
+        savedToProfile: { type: boolean }
+        createdAt: { type: integer, minimum: 0 }
+        expiresAt: { type: integer, minimum: 0 }
+      required: [sourceId, text, visibility, createdAt, expiresAt]
+    StoryImportResponse:
+      type: object
+      properties:
+        story: { $ref: "#/components/schemas/Story" }
+        alreadyImported: { type: boolean }
+      required: [story, alreadyImported]
+    UpdateStoryInput:
+      type: object
+      properties:
+        savedToProfile: { type: boolean }
+        commentsEnabled: { type: boolean }
+    StoryCommentInput:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 300 }
+    StoryCommentResponse:
+      type: object
+      required: [comment]
+      properties:
+        comment: { $ref: "#/components/schemas/CloudComment" }
+    StoryCommentsResponse:
+      type: object
+      required: [comments]
+      properties:
+        comments:
+          type: array
+          items: { $ref: "#/components/schemas/CloudComment" }
+    StoryViewResponse:
+      type: object
+      additionalProperties: false
+      required: [recorded]
+      properties:
+        recorded: { type: boolean }
+    StoryReactionInput:
+      type: object
+      additionalProperties: false
+      required: [emoji]
+      properties:
+        emoji: { type: string, enum: ["❤️", "😂", "😍", "🔥", "👏", "😮", "🙌", "💙", "😭"] }
+    StoryReactionResponse:
+      type: object
+      additionalProperties: false
+      required: [reaction]
+      properties:
+        reaction:
+          type: object
+          additionalProperties: false
+          required: [emoji, createdAt]
+          properties:
+            emoji: { type: string, enum: ["❤️", "😂", "😍", "🔥", "👏", "😮", "🙌", "💙", "😭"] }
+            createdAt: { type: integer, minimum: 0 }
+    StoryActivityViewer:
+      type: object
+      additionalProperties: false
+      required: [id, username, displayName, viewedAt, reaction]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        viewedAt: { type: integer, minimum: 0 }
+        reaction: { type: string, nullable: true }
+    StoryActivityResponse:
+      type: object
+      additionalProperties: false
+      required: [viewCount, reactionCount, viewers]
+      properties:
+        viewCount: { type: integer, minimum: 0 }
+        reactionCount: { type: integer, minimum: 0 }
+        viewers: { type: array, items: { $ref: "#/components/schemas/StoryActivityViewer" } }
+    RegisterInput:
+      type: object
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        username:
+          type: string
+          minLength: 3
+          maxLength: 24
+          pattern: "^[A-Za-z0-9_]+$"
+        displayName: { type: string, minLength: 1, maxLength: 60 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+      required: [email, username, displayName, password]
+    LoginInput:
+      type: object
+      properties:
+        identifier: { type: string, minLength: 1, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+      required: [identifier, password]
+    PublicProfile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string, minLength: 3, maxLength: 24 }
+        displayName: { type: string, minLength: 1, maxLength: 60 }
+        joinedAt: { type: integer }
+        avatar: { type: string }
+        cover: { type: [string, "null"] }
+        bio: { type: string }
+        city: { type: string }
+        interests: { type: array, items: { type: string } }
+      required: [id, username, displayName, joinedAt]
+    Account:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string, minLength: 3, maxLength: 24 }
+        displayName: { type: string, minLength: 1, maxLength: 60 }
+        email: { type: string, format: email, maxLength: 254 }
+        joinedAt: { type: integer }
+      required: [id, username, displayName, email, joinedAt]
+    AuthResponse:
+      type: object
+      properties:
+        accessToken: { type: string, minLength: 32 }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: integer }
+        account: { $ref: "#/components/schemas/Account" }
+        authProvider: { type: string, enum: [password, cognito] }
+      required: [accessToken, tokenType, expiresAt, account]
+    CognitoConfiguration:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        clientId: { type: string }
+        authorizationEndpoint: { type: string, format: uri }
+        logoutEndpoint: { type: string, format: uri }
+        scope: { type: string }
+        redirectUris:
+          type: array
+          items: { type: string, format: uri }
+      required: [enabled]
+    CognitoExchangeInput:
+      type: object
+      properties:
+        code: { type: string, minLength: 1, maxLength: 4096 }
+        codeVerifier: { type: string, minLength: 43, maxLength: 128, pattern: "^[A-Za-z0-9._~-]+$" }
+        nonce: { type: string, minLength: 32, maxLength: 128, pattern: "^[A-Za-z0-9_-]+$" }
+        redirectUri: { type: string, format: uri, maxLength: 2048 }
+        intent: { type: string, enum: [login, link] }
+      required: [code, codeVerifier, nonce, redirectUri, intent]
+    MyAccountResponse:
+      type: object
+      properties:
+        account: { $ref: "#/components/schemas/Account" }
+      required: [account]
+    LogoutResponse:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+      required: [ok]
+    PasswordChangeInput:
+      type: object
+      properties:
+        currentPassword: { type: string, minLength: 8, maxLength: 128 }
+        newPassword: { type: string, minLength: 8, maxLength: 128 }
+      required: [currentPassword, newPassword]
+    PasswordChangeResponse:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+      required: [ok]
+    SocialPost:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sourceId: { type: ["string", "null"] }
+        remixSourcePostId: { type: ["string", "null"], format: uuid, description: Original post this published remix is based on. }
+        text: { type: string, maxLength: 1000 }
+        visibility: { type: string, enum: [public, close-friends] }
+        destination: { type: string, enum: [main, community, both], description: Feed placement. Existing posts remain visible in both feeds. }
+        media:
+          type: array
+          maxItems: 10
+          items: { $ref: "#/components/schemas/PostMediaAsset" }
+        sportsCard: { type: [object, "null"], additionalProperties: true, description: Server-derived workout summary and published image URL; never raw GPS }
+        place:
+          anyOf:
+            - { $ref: "#/components/schemas/PlaceTag" }
+            - { type: "null" }
+        createdAt: { type: integer }
+        author: { $ref: "#/components/schemas/PublicProfile" }
+        likeCount: { type: integer, minimum: 0 }
+        likedByMe: { type: boolean }
+        commentCount: { type: integer, minimum: 0 }
+        saveCount: { type: integer, minimum: 0, description: Aggregate number of accounts that saved this post; saver identities are private. }
+        repostCount: { type: integer, minimum: 0 }
+        remixCount: { type: integer, minimum: 0, description: Number of published remixes visible to the current viewer. }
+        repostedByMe: { type: boolean }
+        repostNote: { type: ["string", "null"], maxLength: 140 }
+        friendRepostCount: { type: integer, minimum: 0, description: Number of confirmed Friends who reposted this Community post. }
+        repostedByFriends:
+          type: array
+          maxItems: 3
+          description: A small, viewer-scoped set of confirmed Friends who reposted this Community post.
+          items: { $ref: "#/components/schemas/PublicProfile" }
+        likedBy:
+          type: array
+          maxItems: 3
+          items: { $ref: "#/components/schemas/PublicProfile" }
+      required: [id, sourceId, remixSourcePostId, text, visibility, destination, media, createdAt, author, likeCount, likedByMe, commentCount, saveCount, repostCount, remixCount, repostedByMe, repostNote]
+    PostMediaAsset:
+      type: object
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp, image/gif, video/mp4, video/webm, audio/mp4, audio/webm, audio/ogg, audio/mpeg] }
+        reference: { type: string }
+      required: [id, contentType, reference]
+    CreativeDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        version: { type: integer, enum: [1] }
+        project: { type: object, additionalProperties: true }
+        state: { type: object, additionalProperties: true }
+        media:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string, pattern: "^oldtime-media:[0-9a-fA-F-]{36}$" }
+        savedAt: { type: integer, minimum: 0 }
+      required: [version, project, state, media, savedAt]
+    CreativeDraftResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        draft:
+          anyOf:
+            - { $ref: "#/components/schemas/CreativeDraft" }
+            - { type: "null" }
+      required: [draft]
+    FeedResponse:
+      type: object
+      properties:
+        posts:
+          type: array
+          items: { $ref: "#/components/schemas/SocialPost" }
+        hasMore:
+          type: boolean
+        nextOffset:
+          type: integer
+          minimum: 0
+      required: [posts, hasMore, nextOffset]
+    CreatePostInput:
+      type: object
+      properties:
+        text: { type: string, maxLength: 1000 }
+        visibility: { type: string, enum: [public, close-friends] }
+        destination: { type: string, enum: [main, community, both] }
+        remixSourcePostId: { type: string, format: uuid, description: Original post this published remix is based on. }
+        mediaIds:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        workoutId: { type: string, format: uuid }
+        sportsCardId: { type: string, format: uuid }
+        place:
+          anyOf:
+            - { $ref: "#/components/schemas/PlaceTag" }
+            - { type: "null" }
+      required: [text]
+    PlaceTag:
+      type: object
+      additionalProperties: false
+      required: [id, label, source]
+      properties:
+        id: { type: string, maxLength: 128 }
+        label: { type: string, minLength: 1, maxLength: 140 }
+        source: { type: string, enum: [custom, osm] }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+    SportsRecording:
+      type: object
+      additionalProperties: false
+      required: [activityType, startedAt, endedAt, points, events]
+      properties:
+        activityType: { type: string, enum: [run, walk, cycle, hike] }
+        startedAt: { type: integer }
+        endedAt: { type: [integer, "null"] }
+        points:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            additionalProperties: false
+            required: [lat, lon, timestamp, accuracy]
+            properties:
+              lat: { type: number, minimum: -90, maximum: 90 }
+              lon: { type: number, minimum: -180, maximum: 180 }
+              timestamp: { type: integer }
+              accuracy: { type: number, minimum: 0, maximum: 1000 }
+              altitude: { type: [number, "null"] }
+              altitudeAccuracy: { type: [number, "null"] }
+              breakBefore: { type: boolean }
+        events:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items:
+            type: object
+            required: [type, timestamp]
+            properties:
+              type: { type: string, enum: [start, pause, resume, finish] }
+              timestamp: { type: integer }
+    SportsWorkout:
+      type: object
+      required: [id, activityType, startedAt, endedAt, summary, status, synced]
+      properties:
+        id: { type: string, format: uuid }
+        activityType: { type: string, enum: [run, walk, cycle, hike] }
+        startedAt: { type: integer }
+        endedAt: { type: [integer, "null"] }
+        summary: { type: object, additionalProperties: true }
+        status: { type: string, enum: [recording, paused, completed] }
+        synced: { type: boolean }
+        points: { type: array, items: { type: object, additionalProperties: true } }
+        events: { type: array, items: { type: object, additionalProperties: true } }
+    PostImportItem:
+      type: object
+      properties:
+        sourceId: { type: string, minLength: 1, maxLength: 128 }
+        text: { type: string, maxLength: 1000 }
+        visibility: { type: string, enum: [public, close-friends] }
+        mediaIds:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        likedByMe: { type: boolean }
+        savedByMe: { type: boolean }
+        comments:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [sourceId, body, createdAt]
+            properties:
+              sourceId: { type: string, minLength: 1, maxLength: 128 }
+              parentSourceId: { type: ["string", "null"], minLength: 1, maxLength: 128 }
+              body: { type: string, minLength: 1, maxLength: 1000 }
+              createdAt: { type: integer, minimum: 0, maximum: 8640000000000000 }
+        legacyArchive:
+          type: object
+          additionalProperties: false
+          required: [legacyLikes, legacySaves, comments]
+          properties:
+            legacyLikes:
+              type: array
+              maxItems: 500
+              items: { type: string, maxLength: 128 }
+            legacySaves:
+              type: array
+              maxItems: 500
+              items: { type: string, maxLength: 128 }
+            comments:
+              type: array
+              maxItems: 200
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, authorId, username, displayName, body, createdAt]
+                properties:
+                  id: { type: string, minLength: 1, maxLength: 128 }
+                  authorId: { type: string, maxLength: 128 }
+                  username: { type: string, maxLength: 24 }
+                  displayName: { type: string, maxLength: 64 }
+                  body: { type: string, maxLength: 1000 }
+                  createdAt: { type: integer, minimum: 0, maximum: 8640000000000000 }
+                  parentId: { type: ["string", "null"], maxLength: 128 }
+        createdAt: { type: integer, minimum: 0, maximum: 8640000000000000 }
+      required: [sourceId, text, createdAt]
+    PostImportInput:
+      type: object
+      properties:
+        posts:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/PostImportItem" }
+      required: [posts]
+    PostImportResult:
+      type: object
+      properties:
+        sourceId: { type: string }
+        postId: { type: string, format: uuid }
+        outcome: { type: string, enum: [imported, already-imported, conflict] }
+      required: [sourceId, postId, outcome]
+    PostImportResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/PostImportResult" }
+      required: [results]
+    PostCreationResult:
+      type: object
+      properties:
+        post: { $ref: "#/components/schemas/SocialPost" }
+      required: [post]
+    LikeResponse:
+      type: object
+      properties:
+        liked: { type: boolean }
+        likeCount: { type: integer, minimum: 0 }
+      required: [liked, likeCount]
+    PostRepostInput:
+      type: object
+      additionalProperties: false
+      properties:
+        note: { type: string, maxLength: 140 }
+    PostRepostResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        reposted: { type: boolean }
+        repostCount: { type: integer, minimum: 0 }
+        note: { type: ["string", "null"], maxLength: 140 }
+      required: [reposted, repostCount, note]
+    UserSearchResults:
+      type: object
+      properties:
+        profiles:
+          type: array
+          items: { $ref: "#/components/schemas/PublicProfile" }
+      required: [profiles]
+    ProfileResponse:
+      type: object
+      properties:
+        profile: { $ref: "#/components/schemas/PublicProfile" }
+        posts:
+          type: array
+          items: { $ref: "#/components/schemas/SocialPost" }
+        postCount: { type: integer, minimum: 0 }
+      required: [profile, posts, postCount]
+    AnnouncementDismissInput:
+      type: object
+      additionalProperties: false
+      required: [choice]
+      properties:
+        choice: { type: string, enum: [not-now, never] }
+    AnnouncementEventInput:
+      type: object
+      additionalProperties: false
+      required: [event]
+      properties:
+        event: { type: string, enum: [shown, action] }
+    CreatorRequirement:
+      type: object
+      required: [key, label, current, target, met]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        current: { type: number }
+        target: { type: number }
+        met: { type: boolean }
+    StoreMembership:
+      type: object
+      required: [active, store, expiresAt]
+      properties:
+        active: { type: boolean }
+        store: { type: [string, "null"], enum: [apple, google, null] }
+        expiresAt: { type: [number, "null"] }
+    CreatorDashboard:
+      type: object
+      required: [status, level, score, eligible, approvedAt, membershipRequired, requirements, stats, history, milestones, membership, creatorPayoutsEnabled, isAdmin]
+      properties:
+        contentBreakdown:
+          type: object
+          required: [text, photos, videos, stories, communityPosts]
+          properties:
+            text: { type: integer }
+            photos: { type: integer }
+            videos: { type: integer }
+            stories: { type: integer }
+            communityPosts: { type: integer }
+        status: { type: string, enum: [rising, emerging, eligible, approved, membership-required, restricted] }
+        level: { type: string }
+        score: { type: integer }
+        eligible: { type: boolean }
+        approvedAt: { type: [number, "null"] }
+        membershipRequired: { type: boolean }
+        requirements: { type: array, items: { $ref: "#/components/schemas/CreatorRequirement" } }
+        stats:
+          type: object
+          required: [accountAgeDays, profileCompletion, originalPosts, activeDays, engagementReceived, communityInteractions]
+          properties:
+            accountAgeDays: { type: integer }
+            profileCompletion: { type: integer }
+            originalPosts: { type: integer }
+            activeDays: { type: integer }
+            engagementReceived: { type: integer }
+            communityInteractions: { type: integer }
+        history:
+          type: array
+          items: { type: object, required: [status, at, reason], properties: { status: { type: string }, at: { type: number }, reason: { type: string } } }
+        milestones:
+          type: array
+          items: { type: object, required: [id, title, reached], properties: { id: { type: string }, title: { type: string }, reached: { type: boolean } } }
+        membership: { $ref: "#/components/schemas/StoreMembership" }
+        creatorPayoutsEnabled: { type: boolean }
+        isAdmin: { type: boolean }
+    BlueBadgeMembership:
+      allOf:
+        - { $ref: "#/components/schemas/StoreMembership" }
+        - type: object
+          required: [interested, billingEnabled, standardPriceCents, trialMonths, returningPriceCents, currency, benefits, offer, creatorMembershipRequired, status, autoRenews, canceledAt, purchaseSupported, restorationSupported, distribution, promotionConfig]
+          properties:
+            status: { type: string, enum: [none, pending, active, canceled, expired, revoked, billing-issue] }
+            autoRenews: { type: [boolean, "null"] }
+            canceledAt: { type: [integer, "null"] }
+            purchaseSupported: { type: boolean }
+            restorationSupported: { type: boolean }
+            distribution: { $ref: "#/components/schemas/BadgeDistribution" }
+            promotionConfig: { $ref: "#/components/schemas/BadgePromotions" }
+            interested: { type: boolean }
+            billingEnabled: { type: boolean }
+            standardPriceCents: { type: integer }
+            trialMonths: { type: integer }
+            returningPriceCents: { type: integer }
+            currency: { type: string }
+            benefits: { type: array, items: { type: string } }
+            offer:
+              type: object
+              required: [eligible, kind, available]
+              properties:
+                eligible: { type: boolean }
+                kind: { type: string, enum: [introductory, returning, standard] }
+                available: { type: boolean }
+            creatorMembershipRequired: { type: boolean }
+    AnnouncementPreferences:
+      type: object
+      additionalProperties: false
+      required: [features, promotions, creators, communities]
+      properties:
+        features: { type: boolean }
+        promotions: { type: boolean }
+        creators: { type: boolean }
+        communities: { type: boolean }
+    AnnouncementCampaign:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, category, primaryLabel, primaryRoute, optional, enabled, inactiveDays, startAt, endAt, cooldownHours]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80, pattern: "^[a-z0-9-]+$" }
+        title: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, minLength: 1, maxLength: 600 }
+        category: { type: string, enum: [welcome, feature, creator, community, membership, returning, safety, service] }
+        primaryLabel: { type: string, minLength: 1, maxLength: 60 }
+        primaryRoute: { type: string, enum: [creator-center, blue-badge, announcements, updates, communities, blast, settings] }
+        optional: { type: boolean }
+        enabled: { type: boolean }
+        inactiveDays: { type: integer, minimum: 0, maximum: 365 }
+        startAt: { type: [number, "null"] }
+        endAt: { type: [number, "null"] }
+        cooldownHours: { type: integer, minimum: 1, maximum: 8760 }
+    CreatorProgramAnalytics:
+      type: object
+      required: [evaluatedAccounts, approvedCreators, interestedAccounts, activeMemberships, announcementViews, announcementActions]
+      properties:
+        evaluatedAccounts: { type: integer, minimum: 0 }
+        approvedCreators: { type: integer, minimum: 0 }
+        interestedAccounts: { type: integer, minimum: 0 }
+        activeMemberships: { type: integer, minimum: 0 }
+        announcementViews: { type: integer, minimum: 0 }
+        announcementActions: { type: integer, minimum: 0 }
+    BadgeDistribution:
+      type: object
+      additionalProperties: false
+      required: [iphoneUrl, androidUrl, openUrl]
+      properties:
+        iphoneUrl: { type: [string, "null"], maxLength: 500 }
+        androidUrl: { type: [string, "null"], maxLength: 500 }
+        openUrl: { type: [string, "null"], maxLength: 500 }
+    CreatorMediaUploadInput:
+      type: object
+      additionalProperties: false
+      required: [contentType, size]
+      properties:
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp, image/gif, image/avif, video/mp4, video/webm, video/quicktime] }
+        size: { type: integer, minimum: 128 }
+    CreatorContentInput:
+      type: object
+      additionalProperties: false
+      required: [sourceId, surface, body, mediaIds]
+      properties:
+        sourceId: { type: string, minLength: 1, maxLength: 120 }
+        surface: { type: string, enum: [post, story, community] }
+        body: { type: string, maxLength: 5000 }
+        mediaIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+    CloudComment:
+      type: object
+      required: [id, body, createdAt, author]
+      properties:
+        id: { type: string, format: uuid }
+        body: { type: string }
+        createdAt: { type: number }
+        author:
+          type: object
+          required: [id, username, displayName]
+          properties:
+            id: { type: string, format: uuid }
+            username: { type: string }
+            displayName: { type: string }
+    CloudCommentInput:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 1000 }
+    BadgePromotions:
+      type: object
+      additionalProperties: false
+      required: [introductoryEnabled, returningEnabled, returningInactiveDays, returningOfferDays]
+      properties:
+        introductoryEnabled: { type: boolean }
+        returningEnabled: { type: boolean }
+        returningInactiveDays: { type: integer, minimum: 1, maximum: 365 }
+        returningOfferDays: { type: integer, minimum: 1, maximum: 90 }
+    CreatorProgramConfig:
+      type: object
+      additionalProperties: false
+      required: [flags, thresholds, campaigns, pricing, promotions, distribution]
+      properties:
+        promotions: { $ref: "#/components/schemas/BadgePromotions" }
+        distribution: { $ref: "#/components/schemas/BadgeDistribution" }
+        flags:
+          type: object
+          additionalProperties: false
+          required: [creatorCenter, automaticApproval, blueBadge, announcements, promotions, milestones]
+          properties:
+            creatorCenter: { type: boolean }
+            automaticApproval: { type: boolean }
+            blueBadge: { type: boolean }
+            announcements: { type: boolean }
+            promotions: { type: boolean }
+            milestones: { type: boolean }
+        thresholds:
+          type: object
+          additionalProperties: false
+          required: [accountAgeDays, originalPosts, activeDays, engagementReceived, communityInteractions]
+          properties:
+            accountAgeDays: { type: integer, minimum: 1, maximum: 365 }
+            originalPosts: { type: integer, minimum: 1, maximum: 10000 }
+            activeDays: { type: integer, minimum: 1, maximum: 14 }
+            engagementReceived: { type: integer, minimum: 1, maximum: 100000 }
+            communityInteractions: { type: integer, minimum: 1, maximum: 10000 }
+        campaigns: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/AnnouncementCampaign" } }
+        pricing:
+          type: object
+          additionalProperties: false
+          required: [standardPriceCents, trialMonths, returningPriceCents, currency]
+          properties:
+            standardPriceCents: { type: integer, minimum: 1, maximum: 100000 }
+            trialMonths: { type: integer, minimum: 0, maximum: 12 }
+            returningPriceCents: { type: integer, minimum: 1, maximum: 100000 }
+            currency: { type: string, enum: [USD] }
+    BlastStateResponse:
+      type: object
+      additionalProperties: false
+      required: [revision, data]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        data: { oneOf: [{ type: object, additionalProperties: true }, { type: "null" }] }
+    BlastStateInput:
+      type: object
+      additionalProperties: false
+      required: [revision, data]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        data: { type: object, additionalProperties: true }
+    BlastStateSaved:
+      type: object
+      additionalProperties: false
+      required: [revision, data]
+      properties:
+        revision: { type: integer, minimum: 1 }
+        data: { type: object, additionalProperties: true }
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+

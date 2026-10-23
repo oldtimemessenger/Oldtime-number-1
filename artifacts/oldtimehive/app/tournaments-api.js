@@ -1,0 +1,21 @@
+import { requestCloudApi } from "./store.js";
+
+const T = "/api/tournaments";
+export const listTournaments = (scope = "all", offset = 0) => requestCloudApi(`${T}?scope=${scope}&offset=${offset}`);
+export const getTournament = id => requestCloudApi(`${T}/${encodeURIComponent(id)}`);
+export const createTournament = body => requestCloudApi(T, { method: "POST", body });
+export const joinTournament = (id, teamId) => requestCloudApi(`${T}/${id}/join`, { method: "POST", body: teamId ? { teamId } : {} });
+export const declineTournament = id => requestCloudApi(`${T}/${id}/decline`, { method: "POST", body: {} });
+export const inviteToTournament = (id, userId, teamId) => requestCloudApi(`${T}/${id}/invitations`, { method: "POST", body: teamId ? { userId, teamId } : { userId } });
+export const searchPeople = q => requestCloudApi(`${T}/people?q=${encodeURIComponent(q)}`);
+export const supportParticipant = (id, participantId) => requestCloudApi(`${T}/${id}/support`, { method: "POST", body: { participantId } });
+export const cancelTournament = id => requestCloudApi(`${T}/${id}/cancel`, { method: "POST", body: {} });
+export const updateTournament = (id, body) => requestCloudApi(`${T}/${id}`, { method: "PATCH", body });
+export const requestTournamentChanges = (id, message) => requestCloudApi(`${T}/${id}/request-changes`, { method: "POST", body: { message } });
+export const withdrawFromTournament = id => requestCloudApi(`${T}/${id}/withdraw`, { method: "POST", body: {} });
+export const resendTournamentInvitation = (id, participantId) => requestCloudApi(`${T}/${id}/resend/${participantId}`, { method: "POST", body: {} });
+export const assignTournamentCaptain = (id, teamId, userId) => requestCloudApi(`${T}/${id}/teams/${teamId}/captain`, { method: "POST", body: { userId } });
+export const getTournamentNotifications = () => requestCloudApi(`${T}/notifications`);
+export const markTournamentNotificationRead = id => requestCloudApi(`${T}/notifications/${id}/read`, { method: "PATCH", body: {} });
+export const getTournamentNotificationPreferences = () => requestCloudApi(`${T}/notification-preferences`);
+export const updateTournamentNotificationPreferences = nonEssentialEnabled => requestCloudApi(`${T}/notification-preferences`, { method: "PATCH", body: { nonEssentialEnabled } });
