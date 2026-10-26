@@ -2,11 +2,13 @@ import "./creative-editor.css";
 import "./creative-overlay.css";
 import { bindViewport, bindSheets } from "./creative-overlay.js";
 import { api } from "./store.js";
+import { bindMentionAutocomplete } from "./mention-autocomplete.js";
 import { icon } from "./icons.js";
 import { openEmojiPicker, closeEmojiPicker } from "./emoji.js";
 import { renderCreativeEditor } from "./creative-editor-view.js";
 import { createProject, createLayer, duplicateLayer, moveLayer, clamp, setProjectDuration, keepLayerInFrame, ProjectHistory, projectScenes } from "./creative-project.js";
-import { putLocalMedia } from "./local-media.js";
+import { mediaUrl, putLocalMedia } from "./local-media.js";
+import { audioSource, audioTitle, savedAudio } from "./audio-library.js";
 import { CreativeAssets, drawProject } from "./creative-renderer.js";
 import { bindCreativeGestures } from "./creative-gestures.js";
 import { commentSource, resolveCommentSource, validateProjectSources, validateProjectAudience, publishCreativeProject } from "./creative-content.js";
@@ -21,16 +23,16 @@ import { waitForVideoFrame } from "./remix-video.js";
 import { createCameraStrip } from "./creative-camera-strip.js";
 import { bindToolsTheme } from "./creative-controls-palette.js";
 import { naturalZoom, cameraConstraints, captureFrame, zoomFromPinch, distance } from "./creative-capture-geometry.js";
-import {bindCreativeStudio} from "./creative-studio.js";
+import { bindCaptureModes } from "./creative-capture-modes.js";
 import { openPlacePicker } from "./place-picker.js";
-import { prepareCreativeDraft, restoreCreativeDraft, saveCreativeDraft, loadCreativeDraft, deleteCreativeDraft } from "./creative-drafts.js";
 import { shouldAutoStartCamera } from "./creative-editor-startup.js";
+import { projectOutputKind, matchingOriginal } from "./creative-output.js";
+import { createPersonCutout } from "./remix-cutout.js";
 
 let currentEditor = null;
 export function closeCreativeEditor() { currentEditor?.(); }
-export function openCreativeEditor({ postId, commentId, destination = "post", startCamera = false, startStudio = false, startShare = false, background = null, caption = "", location = "", visibility, heyWord = null, esc, icons, toast = () => {}, onClose, onPosted, onSave, saveLabel = "Save", initialProject } = {}) {
+export function openCreativeEditor({ postId, commentId, destination = "post", startCamera = false, mediaPicker = false, startShare = false, background = null, caption = "", location = "", visibility, esc, icons, toast = () => {}, onClose, onPosted, onSave, saveLabel = "Save", initialProject, editorVersion = "legacy" } = {}) {
   closeCreativeEditor();
-  if (heyWord?.prompt) destination = "story";
   if (!["post", "community", "story"].includes(destination)) destination = "post";
   const openedInCommunity = destination === "community";
   let source;
@@ -39,57 +41,53 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   const ownerId = api.me()?.id;
   if (!ownerId) { toast("Sign in to create a remix."); return; }
   const project = createProject(source), assets = new CreativeAssets(), blobs = new Map();
-  if((startCamera||startStudio)&&!source&&!initialProject&&!background?.media)project.background.color="#0d0e11";
+  if(!source&&!initialProject&&!background?.media)project.background.color="#000000";
   if(initialProject)Object.assign(project,structuredClone(initialProject));
+  project.audioTracks ||= [];
   const history = new ProjectHistory(project);
-  const root = document.createElement("div"); root.innerHTML = renderCreativeEditor({ destination, hasSource: !!source, esc, icons });
+  const root = document.createElement("div"); root.innerHTML = renderCreativeEditor({ destination, hasSource: !!source, hasSaveHandler: !!onSave, esc, icons, editorVersion });
   document.body.appendChild(root);
   const editor = root.firstElementChild, q = name => root.querySelector("#ce-" + name), canvas = q("canvas");
+  const mentionCleanup = bindMentionAutocomplete(q("caption"), { api });
   q("destination").value=destination;
-  if(startStudio)q("workspace").value="studio";
-  const syncHeyWordControls = () => {
-    const active = q("destination").value === "story" && q("sticker-kind").value === "hey-word";
-    q("hey-word-controls").hidden = !active;
-    q("hey-word-field").hidden = !active || !q("hey-word-enabled").checked;
-  };
-  if (heyWord?.prompt) {
-    q("sticker-kind").value = "hey-word";
-    q("hey-word-enabled").checked = true;
-    q("hey-word-enabled").disabled = true;
-    q("hey-word-prompt").value = String(heyWord.prompt).slice(0, 120);
-    q("hey-word-prompt").readOnly = true;
-    q("hey-word-note").textContent = heyWord.creditHidden
-      ? "You’re responding to this prompt. The starter’s identity stays private."
-      : `You’re responding to @${heyWord.startedByHandle || "member"}’s Oldtime prompt.`;
-  }
-  syncHeyWordControls();
-  q("destination").addEventListener("change", syncHeyWordControls);
-  q("sticker-kind").addEventListener("change", syncHeyWordControls);
-  q("hey-word-enabled").addEventListener("change", syncHeyWordControls);
   const unbindTheme=bindToolsTheme(editor);
-  editor.insertBefore(root.querySelector(".ce-crop-bar"),root.querySelector(".ce-body"));
   const mediaHost=document.createElement("div");mediaHost.setAttribute("aria-hidden","true");
   mediaHost.style.cssText="position:absolute;width:1px;height:1px;opacity:.01;pointer-events:none;overflow:hidden";
   root.append(mediaHost);assets.container=mediaHost;
   for(const [id,selector] of [["source-toggle",".ce-source"],["style-toggle","#ce-inspector"],["share-toggle",".ce-share"]]){
     q(id).setAttribute("aria-expanded","false");root.querySelector(selector).classList.add("is-collapsed");
   }
-  if (heyWord?.prompt) {
-    q("stickers").hidden = false;
-  }
   const oldOverflow = document.body.style.overflow; document.body.style.overflow = "hidden";
   const viewport = bindViewport({ editor });
   let selectedId = project.layers[0]?.id || null, time = 0, measurements = new Map(), raf;
   let closed = false, busy = false, recording = null, live = null, facing = "user", drawing = false, preview = false, playing = false,cameraMode="photo",cameraOpen=false;
-  let playbackStart = 0, recordingStart = 0, inline, tools, pages, mediaTools,studioTools, previousCamera = null, captureTimer = null, cameraRequest = 0;
+  let playbackStart = 0, recordingStart = 0, inline, tools, pages, mediaTools, captureModes, previousCamera = null, captureTimer = null, cameraRequest = 0;
+  let shutterHoldTimer = null, ignoreNextShutterClick = false;
+  const soundPreview=document.createElement("audio");soundPreview.loop=true;soundPreview.preload="auto";
   let sheets=null,quoteReturn=null,quoteDraft=null,quoteCaption="";
-  const draftContext=source?`remix:${postId}:${commentId}`:destination==="community"?"create:community":"create:camera";
   const replaceProject=value=>{for(const key of Object.keys(project))delete project[key];Object.assign(project,structuredClone(value));};
   const layer = () => project.layers.find(item => item.id === selectedId);
   const status = () => { /* Helper copy is intentionally not shown over the canvas. */ };
   const error = value => { q("error").textContent = value?.message || String(value || ""); };
+  const syncShareDestinationButtons = () => {
+    const selected = q("visibility").value === "close-friends"
+      ? "close-friends"
+      : q("destination").value === "story" ? "story" : "feed";
+    root.querySelectorAll("[data-ce-share-destination]").forEach(button => {
+      button.setAttribute("aria-pressed", String(button.dataset.ceShareDestination === selected));
+    });
+    root.querySelectorAll("[data-ce-feed-visibility]").forEach(button =>
+      button.setAttribute("aria-pressed", String(button.dataset.ceFeedVisibility === q("visibility").value)));
+    q("feed-privacy").hidden=q("destination").value==="story"||q("visibility").value==="close-friends";
+    const destinations = q("media-share-destinations");
+    if (destinations) {
+      const hasContent = !!project.background.media || project.layers.length > 0 || editor.classList.contains("is-quote");
+      destinations.hidden = !!live || !hasContent || editor.classList.contains("is-create-v2") &&
+        (q("destination").value === "story" || q("visibility").value === "close-friends");
+    }
+  };
   const render = at => {
-    const size=mediaTools?.cropActive?mediaTools.cropSize():project;
+    const size=project;
     if(canvas.width!==size.width)canvas.width=size.width;
     if(canvas.height!==size.height)canvas.height=size.height;
     editor.style.setProperty("--ce-ratio",`${size.width}/${size.height}`);
@@ -97,7 +95,6 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     editor.classList.toggle("is-typing",!!inline?.active());
     const wrap=root.querySelector(".ce-stage-wrap"),available=Math.max(80,wrap.clientHeight-root.querySelector(".ce-transport").offsetHeight-16);
     editor.style.setProperty("--ce-stage-width",`${Math.min(wrap.clientWidth-16,available*size.width/size.height)}px`);
-    if(mediaTools?.cropActive){mediaTools.drawCrop(canvas);measurements=new Map();return;}
     measurements = drawProject(canvas, project, assets, resolveCommentSource, at, preview || busy ? null : selectedId);
     if (!project.allowOutside && !drawing && !preview && !busy) {
       let moved = false;
@@ -108,17 +105,49 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   };
   let strip=null;
   const rememberBlob = blob => { const url = URL.createObjectURL(blob); blobs.set(url, blob); return url; };
+  const activeSound=()=>project.audioTracks?.[0]||null;
+  const syncSoundPreviewTime=value=>{
+    const duration=soundPreview.duration;
+    if(!soundPreview.src||!Number.isFinite(duration)||duration<=0)return;
+    const target=value%duration;
+    if(Math.abs(soundPreview.currentTime-target)>.35)soundPreview.currentTime=target;
+  };
+  const syncSoundControls=()=>{
+    const title=q("sound-title");if(!title)return;
+    const track=activeSound();
+    title.textContent=track?.title||"Add sound";
+    q("sound-chip").setAttribute("aria-label",track?`Sound: ${track.title}`:"Add sound");
+    q("sound-volume-wrap").hidden=!track;
+    q("sound-remove").hidden=!track;
+    if(track&&q("sound-volume")&&document.activeElement!==q("sound-volume"))q("sound-volume").value=String(track.volume??.8);
+    soundPreview.volume=Math.max(0,Math.min(1,Number(track?.volume??.8)));
+    if(!track){
+      soundPreview.pause();soundPreview.removeAttribute("src");delete soundPreview.dataset.creativeMedia;soundPreview.load();
+    }else if(soundPreview.dataset.creativeMedia!==track.media){
+      soundPreview.pause();soundPreview.removeAttribute("src");soundPreview.dataset.creativeMedia=track.media;
+      void mediaUrl(track.media).then(url=>{
+        if(closed||soundPreview.dataset.creativeMedia!==track.media)return;
+        soundPreview.src=url;soundPreview.load();
+        if(playing)void soundPreview.play().catch(()=>{});
+      }).catch(failure=>{
+        if(!closed&&soundPreview.dataset.creativeMedia===track.media&&q("sound-error"))q("sound-error").textContent=failure.message||"Couldn’t load that sound.";
+      });
+    }
+    if(track&&!playing)syncSoundPreviewTime(time);
+  };
+  const exportAudioTracks=async scene=>Promise.all((scene.audioTracks||[]).map(async track=>({...track,media:await mediaUrl(track.media)})));
   const backgroundVideo = () => assets.get(project.background.media)?.tagName === "VIDEO" ? assets.get(project.background.media) : null;
   const stopLive = () => {
     for (const track of live?.getTracks() || []) track.stop();
     live = null; q("record").disabled = true; q("photo").disabled = true; q("flip").hidden = true;
     clearInterval(captureTimer); captureTimer=null;
   };
-  const stopPlayback = () => { playing = false;if(!live)backgroundVideo()?.pause();q("play").innerHTML = icon("play") || "Play"; };
+  const stopPlayback = () => { playing = false;if(!live)backgroundVideo()?.pause();soundPreview.pause();q("play").innerHTML = icon("play") || "Play"; };
   const refreshControls = () => {
     root.inert=busy;editor.setAttribute("aria-busy",String(busy));
     editor.classList.toggle("has-live-camera",!!live);
     editor.classList.toggle("is-camera-open",cameraOpen);editor.classList.toggle("is-camera-video",cameraMode==="video");editor.classList.toggle("is-capturing",!!recording);
+    editor.classList.toggle("is-video-media",project.background.kind==="video"&&project.background.media!=="live-camera");
     q("empty").hidden=!!live||!!project.background.media||project.layers.length>0||editor.classList.contains("is-quote");
     q("photo").setAttribute("aria-pressed",String(cameraMode==="photo"));q("record").setAttribute("aria-pressed",String(cameraMode==="video"));
     q("shutter").setAttribute("aria-label",recording?"Stop recording video":cameraMode==="photo"?"Take photo":"Start recording video");
@@ -127,9 +156,15 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     q("publish").disabled = busy || !!live || !project.layers.length && !project.background.media;
     if(editor.classList.contains("is-quote")&&!project.layers.some(item=>item.kind==="text"&&item.text.trim()))q("publish").disabled=true;
     q("export").disabled = q("publish").disabled;
-    q("save-exit").disabled=busy||!!recording||!!captureTimer;
-    q("save-exit").title=recording?"Stop recording before saving.":"Save without sharing.";
-    q("save-exit").setAttribute("aria-describedby","ce-save-hint");
+    const nextAction=q("next-action");if(nextAction)nextAction.disabled=q("publish").disabled;
+    const cutoutSource=layer()?.kind==="image"?assets.get(layer().media):project.background.kind==="photo"?assets.get(project.background.media):null;
+    const cutoutButton=root.querySelector('[data-ce-rail="remove-bg"]');if(cutoutButton)cutoutButton.disabled=busy||!!live||!cutoutSource;
+    const trimButton=root.querySelector('[data-ce-rail="trim"]');if(trimButton)trimButton.disabled=busy||!!live||project.background.kind!=="video";
+    if(q("save-exit")){
+      q("save-exit").disabled=busy||!!recording||!!captureTimer;
+      q("save-exit").title=recording?"Stop recording before saving.":"Return to the original composer.";
+      q("save-exit").setAttribute("aria-describedby","ce-save-hint");
+    }
     q("upload").disabled = busy || !!recording;
     q("camera").disabled = busy || !!recording;
     q("flip").disabled = busy || !!recording;
@@ -146,7 +181,10 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     q("draw").setAttribute("aria-pressed", String(drawing));
     q("draw-controls").hidden = !drawing;
     mediaTools?.refresh();
-    studioTools?.refresh();
+    captureModes?.refresh();
+    syncShareDestinationButtons();
+    syncSoundControls();
+    if((playing||recording||live)&&!raf)raf=requestAnimationFrame(tick);
   };
   const updateInspector = () => {
     const item = layer(); q("inspector").hidden = !item;
@@ -194,6 +232,7 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   const seek = value => {
     stopPlayback(); time = clamp(value, 0, project.duration);
     const video = backgroundVideo(); if(video&&!live){if(project.background.videoEdit)syncVideoEdit(video,project.background,time);else video.currentTime=Math.min(time,Math.max(0,video.duration-.01));}
+    syncSoundPreviewTime(time);
     refreshControls(); render(time);
   };
   const options = () => {
@@ -204,15 +243,15 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     select, changed, trash: q("trash"), remove, options, drawing: () => drawing ? { color: q("draw-color").value, width: Number(q("draw-width").value), opacity:Number(q("draw-opacity").value), mode:q("brush").value } : null,
     checkpoint:()=>history.record(), editText:item=>inline.edit(item),
     background:()=>{
-      const media=project.background.media,item=media&&media!=="live-camera"&&!live&&!preview&&!busy&&!recording&&!mediaTools?.cropActive?assets.get(media):null;
+      const media=project.background.media,item=media&&media!=="live-camera"&&!live&&!preview&&!busy&&!recording?assets.get(media):null;
       const w=item?.videoWidth||item?.naturalWidth||item?.width,h=item?.videoHeight||item?.naturalHeight||item?.height;
       return w&&h?{rect:{x:0,y:0,width:1,height:1,...project.background.crop},asset:{w,h}}:null;
     },
     setCrop:rect=>{project.background.crop={...rect};},
-    preview: () => preview || busy || !!recording || !!captureTimer || !!mediaTools?.cropActive });
+    preview: () => preview || busy || !!recording || !!captureTimer });
   const close = (posted = false) => {
     if (closed) return;
-    closed = true; playing = false; cancelAnimationFrame(raf); unbind();unbindTheme();mediaTools?.dispose();
+    closed = true; playing = false; soundPreview.pause();soundPreview.removeAttribute("src");soundPreview.load();cancelAnimationFrame(raf); mentionCleanup(); unbind();unbindTheme();mediaTools?.dispose();
     if (recording?.state !== "inactive") recording?.stop();
     stopLive(); closeEmojiPicker(); assets.dispose();
     strip?.dispose();
@@ -229,15 +268,16 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   const sceneHasContent=scene=>!!(scene&&(scene.layers?.some(item=>item.kind!=="text"||item.text?.trim())||
     scene.background?.media&&scene.background.media!=="live-camera"||scene.pages?.some(sceneHasContent)));
   const hasContent=()=>!!(sceneHasContent(project)||sceneHasContent(quoteReturn?.project)||sceneHasContent(quoteDraft)||
-    previousCamera?.background.media||studioTools?.captureSnapshot().shots.length||q("caption").value.trim());
+     previousCamera?.background.media||q("caption").value.trim());
   const beforeunload=event=>{if(!closed&&hasContent()){event.preventDefault();event.returnValue="";}};
-  window.addEventListener("beforeunload",beforeunload);
-  const hideExit=()=>{q("exit-dialog").hidden=true;editor.querySelectorAll(":scope > :not(#ce-exit-dialog)").forEach(node=>node.inert=false);q("save-exit").focus();};
+  if (!editor.classList.contains("is-create-v2")) window.addEventListener("beforeunload",beforeunload);
+  const hideExit=()=>{q("exit-dialog").hidden=true;editor.querySelectorAll(":scope > :not(#ce-exit-dialog)").forEach(node=>node.inert=false);q("exit-cancel").focus();};
   const showExit=()=>{
+    if(editor.classList.contains("is-create-v2")){inline?.finish();close();return;}
     if(!hasContent()){close();return;}
     inline?.finish();q("exit-dialog").hidden=false;
     editor.querySelectorAll(":scope > :not(#ce-exit-dialog)").forEach(node=>node.inert=true);
-    q("exit-save").focus();
+    q("exit-cancel").focus();
   };
   const keyboard = event => {
     if (document.querySelector(".emoji-overlay")) return;
@@ -252,49 +292,23 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   };
   document.addEventListener("keydown", keyboard);
   q("close").onclick = () => {
-    if(editor.classList.contains("is-studio")){showExit();return;}
     navigateBack();
   };
   q("back").onclick = () => navigateBack();
   q("exit-cancel").onclick=hideExit;
-  q("exit-save").onclick=()=>{hideExit();void saveAndExit();};
-  q("exit-discard").onclick=async()=>{
-    if(busy)return;
-    busy=true;refreshControls();
-    try{if(!onSave)await deleteCreativeDraft(ownerId,draftContext);close();}
-    catch(failure){busy=false;hideExit();error(failure);changed();}
-  };
-  q("save-exit").onclick=()=>void saveAndExit();
+  q("exit-discard").onclick=()=>{if(!busy)close();};
+  q("save-exit")?.addEventListener("click",()=>void saveAndExit());
   async function saveAndExit(){
-    if(busy||recording||captureTimer)return;
-    mediaTools.finishCrop(true);inline.finish();pages.flush();
+    if(!onSave||busy||recording||captureTimer)return;
+    inline.finish();pages.flush();
     if(!hasContent()){close();return;}
-    if(onSave){
-      studioTools.flushCapture();
-      ++cameraRequest;stopLive();cameraOpen=false;
-      if(previousCamera){project.background=previousCamera.background;setProjectDuration(project,previousCamera.duration);previousCamera=null;}
-      changed();await q("publish").onclick();return;
-    }
-    busy=true;stopPlayback();refreshControls();error("");status("Saving your draft…");
-    try{
-      if(api.me()?.id!==ownerId)throw new Error("This editing session has ended.");
-      const scene=structuredClone(project);
-      if(scene.background.media==="live-camera"){
-        scene.background=structuredClone(previousCamera?.background||{kind:"color",color:"#f2f3f5"});
-        scene.duration=previousCamera?.duration||5;
-      }
-      if(scene.pages?.length)scene.pages[scene.activePage||0]={...structuredClone(scene),pages:undefined,activePage:undefined};
-      const state={caption:q("caption").value,location:q("location").value,visibility:q("visibility").value,
-        destination:q("destination").value,workspace:q("workspace").value,capture:studioTools.captureSnapshot(),
-        quoteReturn:quoteReturn?{...quoteReturn,past:[],future:[]}:null,
-        quoteDraft,quoteCaption,isQuote:editor.classList.contains("is-quote"),selectedId,time};
-      await saveCreativeDraft(ownerId,draftContext,prepareCreativeDraft(scene,state,blobs));
-      if(!closed){close();toast("Draft saved to your account");}
-    }catch(failure){if(!closed){busy=false;error(failure);status("Your edit is still here. Nothing was shared.");changed();}}
+    ++cameraRequest;stopLive();cameraOpen=false;
+    if(previousCamera){project.background=previousCamera.background;setProjectDuration(project,previousCamera.duration);previousCamera=null;}
+    changed();await q("publish").onclick();
   }
   function navigateBack(){
     if(busy||recording||captureTimer)return;
-    if(mediaTools?.cropActive){mediaTools.finishCrop(false);return;}
+    if(editor.classList.contains("is-create-v2")){inline?.finish();close();return;}
     if(cameraOpen){showExit();return;}
     if(sheets?.dismissAll())return;
     if(quoteReturn){
@@ -305,8 +319,7 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
       editor.classList.remove("is-quote");q("title").textContent="Create";
       q("inline-text").setAttribute("aria-label","Text on media");
       q("destination").value=["post","community","story"].includes(saved.destination)?saved.destination:"post";syncDestinationChoice();q("caption").value=saved.caption;
-      q("workspace").value=saved.workspace;q("workspace").onchange();
-      studioTools.selectCaptureMode(saved.mode);pages.reset();changed();
+      pages.reset();changed();
       if(saved.cameraOpen||!source&&!onSave&&!project.background.media)void camera();
       return;
     }
@@ -314,7 +327,6 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     const openMenus=root.querySelectorAll("details[open]");
     if(openMenus.length){openMenus.forEach(menu=>menu.open=false);return;}
     if(!q("media-panel").hidden){q("media-close").click();return;}
-    if(editor.classList.contains("is-studio")){q("workspace").value="camera";q("workspace").onchange();workspaceChanged();return;}
     if(!cameraOpen&&!source&&!onSave){void camera();return;}
     showExit();
   }
@@ -327,6 +339,7 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   };
   const setBackground = async (file, kind) => {
     if (closed) return;
+    previousCamera = null;
     const wasMirrored=!!project.background.mirror;
     const cameraEdits=project.background.media==="live-camera"?{crop:project.background.crop,adjustments:project.background.adjustments}:null;
     const value = typeof file === "string" && /^data:(image|video)\//.test(file) ? await (await fetch(file)).blob() : file;
@@ -334,9 +347,9 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     const item = await assets.load(media, kind === "video" ? "video" : "image");
     if (closed) return;
     stopPlayback();
-    if (previousCamera) { project.background=previousCamera.background; setProjectDuration(project,previousCamera.duration); previousCamera=null; }
     history.record(); stopLive();cameraOpen=false;
     project.background = { kind, media, color: q("canvas-color").value,...cameraEdits };
+    if(kind==="photo")strip?.add(media);
     if(!cameraEdits||kind!=="video")delete project.background.mirror;else if(wasMirrored)project.background.mirror=true;
     setProjectDuration(project, kind === "video" ? Math.min(60, item.creativeDuration || item.duration) : 5);
     if(kind==="video")initVideoEdit(project.background,item.creativeDuration||item.duration);
@@ -402,7 +415,7 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
       const caps=stream.getVideoTracks()[0]?.getCapabilities?.()||{};
       q("flash").disabled=!caps.torch;q("zoom").disabled=!caps.zoom;
       if(caps.zoom){q("zoom").min=caps.zoom.min;q("zoom").max=caps.zoom.max;const z=naturalZoom(caps.zoom.min,caps.zoom.max);q("zoom").value=z;if(stream.getVideoTracks()[0].getSettings?.().zoom!==z)void stream.getVideoTracks()[0].applyConstraints({advanced:[{zoom:z}]}).catch(()=>{});}
-      status("Choose Photo or Video, then press the circle to capture."); changed();
+      status("Tap the shutter for a photo. Press and hold to switch to video."); changed();
       root.querySelector(".ce-source").classList.add("is-collapsed");q("source-toggle").setAttribute("aria-expanded","false");
       editor.classList.remove("is-camera-pending");
     } catch (failure) {
@@ -412,6 +425,9 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     }
   };
   q("camera").onclick = camera;
+  q("empty-camera")?.addEventListener("click", camera);
+  q("empty-upload")?.addEventListener("click", () => q("upload").click());
+  q("empty-text")?.addEventListener("click", () => root.querySelector('[data-ce-add="text"]')?.click());
   q("flip").onclick = () => { facing = facing === "user" ? "environment" : "user"; void camera(); };
   const countdown=action=>{
     const delay=Number(q("camera-timer").value);if(!delay){void action();return;}
@@ -475,12 +491,32 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     } catch (failure) { busy=false;error(failure); recording = null; refreshControls(); }
   };
   q("shutter").onclick=()=>{
+    if(ignoreNextShutterClick){ignoreNextShutterClick=false;return;}
     if(recording){if(recording.state!=="inactive")recording.stop();q("shutter").disabled=true;return;}
     if(!live||busy||captureTimer)return;
     countdown(cameraMode==="photo"?capturePhoto:recordVideo);
   };
+  q("shutter").addEventListener("pointerdown",event=>{
+    if(!cameraOpen||!live||busy||recording||captureTimer||event.button>0)return;
+    clearTimeout(shutterHoldTimer);
+    shutterHoldTimer=setTimeout(()=>{
+      shutterHoldTimer=null;
+      if(closed||!live||recording||busy)return;
+      ignoreNextShutterClick=true;
+      window.setTimeout(()=>{ignoreNextShutterClick=false;},750);
+      captureModes?.select(cameraMode==="video"?"photo":"video");
+      status("Video mode selected. Tap the shutter to start recording.");
+    },450);
+  });
+  const cancelShutterHold=event=>{
+    clearTimeout(shutterHoldTimer);
+    shutterHoldTimer=null;
+    if(event?.type==="pointercancel"||event?.type==="lostpointercapture")ignoreNextShutterClick=false;
+  };
+  q("shutter").addEventListener("pointerup",cancelShutterHold);
+  q("shutter").addEventListener("pointercancel",cancelShutterHold);
+  q("shutter").addEventListener("lostpointercapture",cancelShutterHold);
   const add = item => {
-    mediaTools?.finishCrop(true);
     inline?.finish(); history.record();
     item.endTime = project.duration; project.layers.push(item); selectedId = item.id; drawing = false; changed(); revealStickerEditor(item); return item;
   };
@@ -489,28 +525,8 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   pages = bindCreativePages({q,project,history,changed,seek,setSelected:id=>{selectedId=id;}});
   mediaTools=bindMediaEditor({root,editor,q,project,assets,history,changed,seek,time:()=>time,stop:stopPlayback,
     canEdit:()=>!busy&&!recording&&!captureTimer,inline,error});
-  studioTools=bindCreativeStudio({root,editor,q,project,assets,history,inline,mediaTools,add,layer,setSelected:id=>selectedId=id,
-    changed,stop:stopPlayback,error,status,rememberBlob,setBusy:value=>{busy=value;refreshControls();},
-    alive:()=>!closed&&api.me()?.id===ownerId,canEdit:()=>!busy&&!recording&&!captureTimer,
-    finishCarousel:scenes=>{
-      history.record();stopLive();cameraOpen=false;previousCamera=null;
-      Object.assign(project,structuredClone(scenes[0]));project.pages=structuredClone(scenes);project.activePage=0;
-      selectedId=null;time=0;pages.reset();changed();status("Carousel ready. Edit each photo before sharing.");
-    }});
-  const workspaceChanged=()=>{
-    if(q("workspace").value==="studio"){
-      if(live||cameraOpen){++cameraRequest;stopLive();cameraOpen=false;
-        if(previousCamera){project.background=previousCamera.background;setProjectDuration(project,previousCamera.duration);previousCamera=null;}
-        changed();}
-    }else if(!live&&!cameraOpen&&!source&&!onSave&&!editor.classList.contains("is-quote")&&!project.background.media)void camera();
-  };
-  q("workspace").addEventListener("change",workspaceChanged);
-  if(startStudio)q("workspace").dispatchEvent(new Event("change"));
+  captureModes=bindCaptureModes({editor,q,changed,canEdit:()=>!busy&&!recording&&!captureTimer,alive:()=>!closed});
   sheets = bindSheets({ root, editor, q });
-  if (heyWord?.prompt) requestAnimationFrame(() => {
-    const flow = q("sticker-flow");
-    if (flow) flow.scrollLeft = flow.clientWidth;
-  });
   root.querySelectorAll("[data-ce-add]").forEach(button => button.onclick = () => {
     const kind = button.dataset.ceAdd;
     if (kind === "text") { const item=add(createLayer("text",{text:"",color:project.background.kind==="color"?"#17191d":"#ffffff"})); inline.edit(item); }
@@ -580,6 +596,147 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   q("backward").onclick = () => { if(layer()?.locked)return;history.record();moveLayer(project, selectedId, -1); changed(); };
   q("canvas-color").onfocus=()=>history.record();
   q("canvas-color").oninput = () => { project.background.color = q("canvas-color").value; changed(false); };
+  if(q("next-action"))q("next-action").onclick=()=>{
+    if(onSave){q("publish").click();return;}
+    inline.finish();
+    q("publish").click();
+  };
+  if(q("final-share"))q("final-share").onclick=()=>q("publish").click();
+  root.querySelectorAll("[data-ce-rail]").forEach(button=>button.onclick=()=>{
+    const action=button.dataset.ceRail;
+    if(action==="text"){
+      if(cameraOpen){
+        ++cameraRequest;stopLive();cameraOpen=false;
+        if(previousCamera){
+          project.background=previousCamera.background;
+          setProjectDuration(project,previousCamera.duration);
+          previousCamera=null;
+        }else if(project.background.kind==="live-camera"){
+          project.background={kind:"color",color:q("canvas-color").value,media:""};
+        }
+        changed();
+      }
+      root.querySelector('[data-ce-add="text"]').click();
+    }
+    if(action==="draw")q("draw").click();
+    if(action==="trim")root.querySelector('[data-ce-media-tool="trim"]')?.click();
+    if(action==="templates"){
+      q("inspector").hidden=false;q("text-fields").hidden=false;
+      q("inspector").classList.remove("is-collapsed");
+      root.querySelector(".ce-panel").dataset.sheet="open";
+      root.querySelector(".ce-presets")?.scrollIntoView({block:"nearest"});
+    }
+    if(action==="stickers")root.querySelector('[data-ce-add="sticker"]').click();
+    if(action==="overlay")q("image-upload").click();
+    if(action==="remove-bg")void removePersonBackground();
+    if(action==="caption")q("share-toggle").click();
+    if(action==="more"){
+      const menu=root.querySelector(".ce-header-menu");
+      if(menu)menu.open=!menu.open;
+    }
+    if(action==="canvas-color"){
+      q("source-toggle").click();
+      q("canvas-color").click();
+    }
+    if(action==="layers")q("layers-toggle").click();
+  });
+  if(q("sound-chip")){
+    const soundPicker=q("sound-picker"),soundList=q("sound-list");
+    const fillSavedSounds=()=>{
+      soundList.replaceChildren();
+      const library=savedAudio();
+      if(!library.length){
+        const empty=document.createElement("p");
+        empty.textContent="Save a video’s sound to find it here.";
+        soundList.append(empty);
+        return;
+      }
+      for(const sound of library){
+        const button=document.createElement("button");
+        button.type="button";button.dataset.savedSoundId=sound.id;
+        const title=document.createElement("span");title.textContent=sound.title;
+        const author=document.createElement("small");author.textContent=sound.author||"Saved sound";
+        button.append(title,author);soundList.append(button);
+      }
+    };
+    const setSound=async({media,title,sourcePostId=null,previewUrl=null})=>{
+      const preview=previewUrl||await mediaUrl(media);
+      const track={id:`sound-${crypto.randomUUID()}`,media,title:String(title||"Sound").trim().slice(0,100),sourcePostId,volume:activeSound()?.volume??.8,offset:0,loop:true};
+      history.record();project.audioTracks=[track];
+      soundPreview.pause();soundPreview.dataset.creativeMedia=media;soundPreview.src=preview;soundPreview.load();
+      soundPicker.hidden=true;q("sound-error").textContent="";
+      changed();
+    };
+    q("sound-chip").onclick=()=>{
+      inline?.finish();q("sound-error").textContent="";
+      fillSavedSounds();soundPicker.hidden=!soundPicker.hidden;
+      q("sound-chip").setAttribute("aria-expanded",String(!soundPicker.hidden));
+      if(!soundPicker.hidden)q("sound-close").focus();
+    };
+    q("sound-close").onclick=()=>{soundPicker.hidden=true;q("sound-chip").setAttribute("aria-expanded","false");q("sound-chip").focus();};
+    q("sound-upload-open").onclick=()=>q("sound-upload").click();
+    q("sound-upload").onchange=async event=>{
+      const file=event.target.files?.[0];event.target.value="";
+      if(!file)return;
+      if(!file.type.startsWith("audio/")&&!/\.(mp3|m4a|aac|wav|ogg|opus|flac|webm)$/i.test(file.name)){
+        q("sound-error").textContent="Choose an audio file.";return;
+      }
+      try{
+        const media=rememberBlob(file);
+        await setSound({media,title:file.name.replace(/\.[^.]+$/,"")||"My sound",previewUrl:media});
+      }catch(failure){q("sound-error").textContent=failure.message||"Couldn’t add that sound.";}
+    };
+    soundList.onclick=async event=>{
+      const button=event.target.closest("[data-saved-sound-id]");if(!button)return;
+      const post=api.post(button.dataset.savedSoundId),source=audioSource(post);
+      if(!source?.media?.[0]){q("sound-error").textContent="That saved sound is no longer available.";return;}
+      button.disabled=true;q("sound-error").textContent="";
+      try{
+        const media=source.media[0],previewUrl=await mediaUrl(media);
+        if(closed)return;
+        await setSound({media,previewUrl,title:audioTitle(post),sourcePostId:source.id});
+      }catch(failure){q("sound-error").textContent=failure.message||"Couldn’t load that sound.";}
+      finally{if(button.isConnected)button.disabled=false;}
+    };
+    q("sound-volume").onfocus=()=>history.record();
+    q("sound-volume").oninput=()=>{
+      const track=activeSound();if(!track)return;
+      track.volume=Number(q("sound-volume").value);soundPreview.volume=track.volume;changed(false);
+    };
+    q("sound-remove").onclick=()=>{
+      history.record();project.audioTracks=[];soundPreview.pause();soundPreview.removeAttribute("src");delete soundPreview.dataset.creativeMedia;soundPreview.load();soundPicker.hidden=true;changed();
+    };
+  }
+  async function removePersonBackground(){
+    const item=layer();
+    const backgroundTarget=item?.kind!=="image"&&project.background.kind==="photo"&&project.background.media;
+    if(item?.kind!=="image"&&!backgroundTarget)return error("Select a photo or image overlay first.");
+    if(item?.locked)return error("Unlock this image before editing it.");
+    const image=assets.get(backgroundTarget?project.background.media:item.media);
+    if(!image)return error("The selected photo is not ready yet.");
+    if(busy||recording||live)return;
+    busy=true;refreshControls();error("");status("Preparing local person cutout…");
+    let cutout;
+    try{
+      const width=image.naturalWidth||image.width,height=image.naturalHeight||image.height;
+      cutout=await createPersonCutout({still:true});
+      const matte=await cutout.image(image);
+      const work=document.createElement("canvas");work.width=width;work.height=height;
+      const context=work.getContext("2d",{willReadFrequently:true});
+      context.drawImage(image,0,0,width,height);
+      context.globalCompositeOperation="destination-in";
+      context.drawImage(matte,0,0,width,height);
+      context.globalCompositeOperation="source-over";
+      const blob=await new Promise((resolve,reject)=>work.toBlob(value=>value?resolve(value):reject(new Error("Could not create the transparent image.")),"image/png"));
+      if(closed)return;
+      history.record();
+      const media=rememberBlob(blob);await assets.load(media,"image");
+      if(backgroundTarget)project.background.media=media;else item.media=media;
+      changed();
+      status("Person cutout ready.");
+    }catch(failure){error(failure);}
+    finally{cutout?.close();busy=false;if(!closed)changed(false);}
+  }
   q("preview").onclick = () => {
     inline.finish();
     preview = !preview; drawing = false; editor.classList.toggle("is-preview", preview); q("preview").setAttribute("aria-pressed", String(preview));
@@ -589,34 +746,22 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
   q("scrub").oninput = () => { if (!live && !busy) seek(q("scrub").value); };
   q("play").onclick = async () => {
     if (live || busy) return;
-    if (playing) { stopPlayback(); return; }
+    if (playing) { stopPlayback(); refreshControls(); return; }
     if (time >= project.duration - .05) time = 0;
     playbackStart = performance.now() - time * 1000; playing = true;
     const video = backgroundVideo();
     if(video){if(project.background.videoEdit)syncVideoEdit(video,project.background,time);else video.currentTime=time;video.muted=false;try{await video.play();}catch(failure){playing=false;error(failure);}}
+    if(activeSound()&&soundPreview.src){
+      syncSoundPreviewTime(time);
+      try{await soundPreview.play();}catch{if(q("sound-error"))q("sound-error").textContent="Sound preview could not start. Tap Play to try again.";}
+    }
+    refreshControls();
   };
   q("publish").onclick = async () => {
     if (busy || live) return;
-    mediaTools.finishCrop(true);
     inline.finish();
     pages.flush();
     const destination = q("destination").value;
-    const wantsHeyWord = destination === "story" && q("hey-word-enabled").checked;
-    const prompt = q("hey-word-prompt").value.trim();
-    if (wantsHeyWord && !prompt) {
-      error("Write a prompt for the Oldtime story sticker.");
-      return;
-    }
-    const storyPrompt = wantsHeyWord ? {
-      prompt,
-      ...(heyWord?.promptId ? { promptId: heyWord.promptId } : {}),
-      ...(heyWord?.startedBy ? { startedBy: heyWord.startedBy } : {}),
-      ...(heyWord?.startedByName ? { startedByName: heyWord.startedByName } : {}),
-      ...(heyWord?.startedByHandle ? { startedByHandle: heyWord.startedByHandle } : {}),
-      ...(heyWord?.creditHidden ? { creditHidden: true } : {}),
-      ...(heyWord?.sourceStoryId ? { sourceStoryId: heyWord.sourceStoryId } : {}),
-      ...(heyWord?.responseTo ? { responseTo: heyWord.responseTo } : {}),
-    } : null;
     busy = true; stopPlayback(); refreshControls(); error(""); status("Saving your layers and media…");
     try {
       if(onSave){
@@ -626,8 +771,8 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
             await document.fonts.ready;
             // Blast's fallback media must not bake revocable source comments into pixels.
             const scene=structuredClone(project);scene.layers=scene.layers.filter(item=>item.kind!=="comment");
-            const animated=scene.background.kind==="video"||scene.layers.some(item=>assets.get(item.media)?.frames||item.animation&&item.animation!=="none");
-            return animated?exportCreativeVideo({canvas,video:backgroundVideo(),background:scene.background,duration:scene.duration,render:at=>drawProject(canvas,scene,assets,resolveCommentSource,at),alive:()=>!closed})
+            const animated=projectOutputKind(scene,assets)==="video";
+            return animated?exportCreativeVideo({canvas,video:backgroundVideo(),background:scene.background,duration:scene.duration,render:at=>drawProject(canvas,scene,assets,resolveCommentSource,at),alive:()=>!closed,audioTracks:await exportAudioTracks(scene)})
               :(drawProject(canvas,scene,assets,resolveCommentSource,time),canvasBlob(canvas));
           }});
         close(true);return;
@@ -641,14 +786,13 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
         if (api.me()?.id !== ownerId || closed) throw new Error("This editing session has ended.");
         await document.fonts.ready;
         const storyProject = structuredClone(project);
-        const original = destination !== "story" ? originalPublicationMedia(storyProject, blobs, assets.get(storyProject.background.media)) : null;
+        const outputKind=projectOutputKind(storyProject,assets);
+        const hasAddedSound=storyProject.audioTracks?.some(track=>track?.media);
+        const original = destination !== "story"&&!hasAddedSound ? matchingOriginal(originalPublicationMedia(storyProject, blobs, assets.get(storyProject.background.media)),outputKind) : null;
         const scenes = projectScenes(storyProject);
-        const carousel = destination !== "story" && scenes.length > 1 && scenes.length <= 10 &&
-          scenes.every(scene => scene.background.kind === "photo" && scene.background.media &&
-            !assets.get(scene.background.media)?.frames &&
-            !scene.layers.some(layer => assets.get(layer.media)?.frames || layer.animation && layer.animation !== "none"));
-        const animated = storyProject.background.kind === "video" ||
-          storyProject.layers.some(layer => assets.get(layer.media)?.frames || layer.animation && layer.animation !== "none");
+        const carousel = destination !== "story" && outputKind==="photo" && scenes.length > 1 && scenes.length <= 10 &&
+          scenes.every(scene => scene.background.kind==="photo" && scene.background.media);
+        const animated = outputKind==="video";
         const rendered = [];
         if (carousel) {
           for (const scene of scenes) {
@@ -662,6 +806,7 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
               duration: storyProject.duration,
               render: at => drawProject(canvas, storyProject, assets, resolveCommentSource, at),
               alive: () => !closed && api.me()?.id === ownerId,
+              audioTracks: await exportAudioTracks(storyProject),
             })
           : (drawProject(canvas, storyProject, assets, resolveCommentSource, 0), await canvasBlob(canvas)));
         if (!mediaBlob.size) throw new Error("The rendered Story is empty.");
@@ -699,32 +844,27 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
           place: storyProject.place || null,
           active: () => !closed && api.me()?.id === ownerId,
         });
-        let cleanupFailed = false;
-        try { await deleteCreativeDraft(ownerId, draftContext); } catch { cleanupFailed = true; }
         close(true);
         const story = destination === "story";
-        toast(cleanupFailed ? "Published. The saved cloud draft could not be cleared." : story ? "Story uploaded" : "Posted");
+        toast(story ? "Story uploaded" : "Posted");
         onPosted?.(item?.id, story, !story && (openedInCommunity || destination === "community"));
         return;
       }
-      const item = await publishCreativeProject(project, blobs, { destination, visibility: q("visibility").value, heyWord: storyPrompt,
+      const item = await publishCreativeProject(project, blobs, { destination, visibility: q("visibility").value,
         quote: editor.classList.contains("is-quote"),
         caption: q("caption").value, location:q("location").value, ownerId, active: () => !closed });
-      let cleanupFailed=false;
-      try{await deleteCreativeDraft(ownerId,draftContext);}catch{cleanupFailed=true;}
-      const story = q("destination").value === "story"; close(true); toast(cleanupFailed?"Shared, but the saved draft could not be cleared.":story ? "Added to your story" : "Posted"); onPosted?.(item.id, story, !story && (openedInCommunity || destination === "community"));
+      const story = q("destination").value === "story"; close(true); toast(story ? "Added to your story" : "Posted"); onPosted?.(item.id, story, !story && (openedInCommunity || destination === "community"));
     } catch (failure) { if (!closed) { busy = false; error(failure); status("Your edit is still here. Nothing was published."); refreshControls(); } }
   };
   q("export").onclick = async () => {
     if (busy || live) return;
-    mediaTools.finishCrop(true);
     inline.finish();
     busy = true; stopPlayback(); refreshControls(); error(""); status("Rendering your preview…");
     try {
       validateProjectSources(project); await document.fonts.ready;
-      const animated = project.background.kind === "video" || assets.items.get(project.background.media)?.frames || project.layers.some(item => assets.items.get(item.media)?.frames || item.animation && item.animation !== "none");
+      const animated = projectOutputKind(project,assets)==="video";
       const blob = animated ? await exportCreativeVideo({ canvas, video: backgroundVideo(),background:project.background, duration: project.duration, render: at => drawProject(canvas, project, assets, resolveCommentSource, at),
-        alive: () => { if (closed) return false; try { validateProjectSources(project); return true; } catch { return false; } } }) : (drawProject(canvas, project, assets, resolveCommentSource, time), await canvasBlob(canvas));
+        alive: () => { if (closed) return false; try { validateProjectSources(project); return true; } catch { return false; } },audioTracks:await exportAudioTracks(project) }) : (drawProject(canvas, project, assets, resolveCommentSource, time), await canvasBlob(canvas));
       if (closed) return;
       const link = document.createElement("a"), url = URL.createObjectURL(blob);
       link.href = url; link.download = `old-time-remix.${blob.type.includes("mp4") ? "mp4" : blob.type.startsWith("video/") ? "webm" : "png"}`;
@@ -733,7 +873,8 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     } catch (failure) { if (!closed) error(failure); }
     finally { busy = false; if (!closed) changed(); }
   };
-  const tick = now => {
+  function tick(now) {
+    raf=0;
     if (closed) return;
     if (recording) {
       time = Math.min(project.duration, (now - recordingStart) / 1000);
@@ -743,10 +884,10 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
       syncVideoEdit(backgroundVideo(),project.background,time,true);
       if (time >= project.duration) stopPlayback();
     }
-    if (!busy) render(time);
+    if (!busy && (playing || recording || live)) render(time);
     q("scrub").value = time; q("time").textContent = `${time.toFixed(1)} / ${project.duration.toFixed(1)}s`;
-    raf = requestAnimationFrame(tick);
-  };
+    if(playing||recording||live)raf = requestAnimationFrame(tick);
+  }
   q("caption").value=caption;q("location").value=location;
   {const loc=q("location");loc.readOnly=true;loc.placeholder="Add place";
    const pick=()=>openPlacePicker({value:project.place||(loc.value?{id:"custom:existing",label:loc.value,source:"custom"}:null),toast,
@@ -757,60 +898,69 @@ export function openCreativeEditor({ postId, commentId, destination = "post", st
     const selected = q("destination").value;
     q("other-feed-label").textContent = selected === "community" ? "Also share to Main feed" : "Also share to Community";
     q("other-feed-field").hidden = selected === "story" || !!onSave;
+    q("location").closest("label").hidden = selected === "story";
     if (selected === "story") q("other-feed").checked = false;
+    syncShareDestinationButtons();
   };
   q("destination").addEventListener("change", syncDestinationChoice);
   syncDestinationChoice();
-  if(onSave){q("publish").textContent=saveLabel;q("destination").closest("label").hidden=true;q("visibility").closest("label").hidden=true;}
-  q("visibility").value = visibility || (api.me().private ? "followers" : "public");
+  if(onSave){q("publish").textContent=saveLabel;q("next-action").textContent=saveLabel;q("destination").closest("label").hidden=true;q("visibility").closest("label").hidden=true;}
+  q("visibility").value = visibility || (api.me().private ? "friends" : "public");
+  syncShareDestinationButtons();
+  root.querySelectorAll("[data-ce-share-destination]").forEach(button => {
+    button.onclick = () => {
+      const choice = button.dataset.ceShareDestination;
+      if (choice === "story") {
+        q("destination").value = "story";
+        q("visibility").value = api.me().private ? "friends" : "public";
+      } else if (choice === "close-friends") {
+        q("destination").value = "story";
+        q("visibility").value = "close-friends";
+      } else {
+        q("destination").value = "post";
+        if (!["friends", "public"].includes(q("visibility").value)) {
+          q("visibility").value = api.me().private ? "friends" : "public";
+        }
+      }
+      syncDestinationChoice();
+      changed();
+    };
+  });
+  root.querySelectorAll("[data-ce-feed-visibility]").forEach(button => {
+    button.onclick = () => {
+      if (q("destination").value === "story") q("destination").value = "post";
+      q("visibility").value = button.dataset.ceFeedVisibility;
+      syncDestinationChoice();
+      changed();
+    };
+  });
+  syncShareDestinationButtons();
   if (source && !api.canSeePost(api.post(source.postId), null)) {
     q("visibility").value = api.post(source.postId).visibility === "close-friends" ? "close-friends" : "friends";
     status("The original is restricted. Your remix must use an audience that can view it.");
   }
   if(onSave){
-    q("save-hint").textContent="Saves your edit and returns to the composer without sharing.";
-    q("exit-description").textContent="Save your edit and return to the composer, or discard these changes. Nothing will be shared.";
+    q("save-hint").textContent="Returns your edit to its original composer without sharing.";
+    q("exit-description").textContent="Your edit will be returned to the original composer, or you can discard it. Nothing will be shared.";
   }
   changed(); void loadSources(); raf = requestAnimationFrame(tick); q("close").focus();
   if (startShare) q("share-toggle").click();
   void (async()=>{
-    let restored=false;
-    if(!onSave&&!initialProject&&!background){
-      busy=true;refreshControls();
-      try{
-        const draft=await loadCreativeDraft(ownerId,draftContext);
-        if(closed)return;
-        if(draft){
-          const saved=restoreCreativeDraft(draft,rememberBlob),state=saved.state;
-          replaceProject(saved.project);selectedId=state.selectedId||null;time=state.time||0;
-          quoteReturn=state.quoteReturn||null;quoteDraft=state.quoteDraft||null;quoteCaption=state.quoteCaption||"";
-          q("caption").value=state.caption||"";q("location").value=state.location||"";
-          q("destination").value=["post","community","story"].includes(state.destination)?state.destination:destination;syncDestinationChoice();q("visibility").value=state.visibility||"public";
-          q("workspace").value=startStudio?"studio":state.workspace||"camera";
-          busy=false;q("workspace").onchange();studioTools.restoreCapture(state.capture);
-          editor.classList.remove("is-quote");q("title").textContent="Create";
-          q("inline-text").setAttribute("aria-label","Text on media");
-          q("canvas-color").value=project.background.color||"#f2f3f5";
-          restored=true;status("Draft restored. Save & Exit keeps it in your account without sharing.");
-        }
-      }catch(failure){if(!closed)error(failure);}
-      finally{busy=false;if(!closed)changed();}
-    }
     if(closed)return;
-    if(restored||initialProject){
+    if(initialProject){
       await Promise.all([project,...project.pages||[]].flatMap(scene=>[
         scene.background.media?assets.load(scene.background.media,scene.background.kind==="video"?"video":"image"):null,
         ...scene.layers.filter(item=>item.kind==="image").map(item=>assets.load(item.media))
       ]).filter(Boolean)).catch(error);
-      if(!closed){pages.reset();changed();if(restored&&!startStudio&&!editor.classList.contains("is-quote")&&(studioTools.captureSnapshot().shots.length||startCamera&&!source&&!onSave&&!background?.media)){if(q("workspace").value!=="camera"){q("workspace").value="camera";q("workspace").onchange();}void camera();}}
+      if(!closed){pages.reset();changed();}
     }else{
       if(shouldAutoStartCamera({
         startCamera,
-        startStudio,
         hasSource: !!source,
         hasInitialProject: !!initialProject,
         hasBackground: !!background?.media,
-        hasSaveHandler: !!onSave
+        hasSaveHandler: !!onSave,
+        preferMediaPicker: mediaPicker
       }))void camera();
       if(background?.media)await setBackground(background.media,background.kind).catch(error);
     }

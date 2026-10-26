@@ -11,7 +11,10 @@ test("real photo strip deduplicates, limits and selects photos without inventing
     const host=make(),slot=make();let picked=null,upload=0;
     const strip=createCameraStrip({host,uploadHost:slot,max:2,onPick:url=>picked=url,onUpload:()=>upload++});
     assert.equal(host.dataset.count,0);assert.deepEqual(strip.items(),[]);
-    slot.children[0].onclick();assert.equal(upload,1);assert.equal(host.children.length,2);assert.match(slot.children[0].children[0].src,/gallery-glyph\.png$/);
+    slot.children[0].onclick();assert.equal(upload,1);assert.equal(host.children.length,2);
+    assert.equal(slot.children[0].attributes["aria-label"],"Library");
+    assert.match(slot.children[0].children[0].children[0].src,/gallery-glyph\.png$/);
+    assert.equal(slot.children[0].children[1].textContent,"Library");
     strip.add("blob:first");strip.add("blob:second");strip.add("blob:second");strip.add("blob:third");
     assert.deepEqual(strip.items(),["blob:third","blob:second"]);assert.deepEqual(strip.thumbnails(),["blob:third","blob:second"]);
     host.children[1].children[0].onclick();assert.equal(picked,"blob:third");

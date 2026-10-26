@@ -5,7 +5,7 @@ const uid = () => "layer-" + crypto.randomUUID();
 export function createProject(source = null) {
   const project = {
     version: PROJECT_VERSION, width: 1080, height: 1920, duration: 5,
-    background: { kind: "color", color: "#f2f3f5", media: "" }, layers: []
+    background: { kind: "color", color: "#f2f3f5", media: "" }, layers: [], audioTracks: []
   };
   if (source) project.layers.push(createLayer("comment", { source, x: .5, y: .27 }));
   return project;

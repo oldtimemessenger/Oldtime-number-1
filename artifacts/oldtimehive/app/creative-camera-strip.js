@@ -3,8 +3,11 @@ const galleryIcon = new URL("./assets/gallery-glyph.png", import.meta.url).href;
 export function createCameraStrip({ host, uploadHost = null, onPick, onUpload, max = 24 }) {
   const items = [];
   const tile = document.createElement("button");
-  tile.type = "button"; tile.className = "ce-strip-upload"; tile.setAttribute("aria-label", "Choose photos from your gallery");
-  const img0 = document.createElement("img"); img0.src = galleryIcon; img0.alt = ""; img0.draggable = false; img0.className = "ce-strip-glyph"; tile.append(img0);
+  tile.type = "button"; tile.className = "ce-strip-upload"; tile.setAttribute("aria-label", "Library"); tile.title = "Library";
+  const iconFrame = document.createElement("span"); iconFrame.className = "ce-library-icon-frame";
+  const img0 = document.createElement("img"); img0.src = galleryIcon; img0.alt = ""; img0.draggable = false; img0.className = "ce-strip-glyph"; iconFrame.append(img0);
+  const label = document.createElement("span"); label.className = "ce-library-label"; label.textContent = "Library";
+  tile.append(iconFrame, label);
   tile.onclick = () => onUpload();
   const list = document.createElement("div"); list.className = "ce-strip-list";
   const handle = document.createElement("button"); handle.type = "button"; handle.className = "ce-strip-handle";

@@ -1,25 +1,55 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {renderCreativeEditor} from "./creative-editor-view.js";
-test("compact creation keeps core controls and hides Quote without duplicate IDs",()=>{
-  const html=renderCreativeEditor(),ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);
-  assert.equal(ids.length,new Set(ids).size);
-  for(const id of ["ce-workspace","ce-shutter","ce-photo","ce-record","ce-flash","ce-zoom","ce-camera-timer","ce-share-toggle","ce-publish","ce-draw","ce-upload","ce-export","ce-undo","ce-redo","ce-save-exit","ce-exit-save","ce-exit-discard","ce-exit-cancel"])assert.ok(ids.includes(id),id);
-  const workspace=html.match(/<select id="ce-workspace"[\s\S]*?<\/select>/)[0];
-  assert.equal((workspace.match(/<option/g)||[]).length,2);
-  for(const kind of ["photo","video","story","carousel"])assert.match(html,new RegExp(`data-ce-capture-mode="${kind}"`));
-  assert.doesNotMatch(html,/data-ce-capture-mode="quote"|ce-quote-photo|Quote designs/);
-  assert.match(html,/class="ce-capture-modes" hidden/);
-  assert.ok(ids.includes("ce-capture-label"));
-  assert.ok(!html.match(/class="ce-capture-modes" hidden[\s\S]*?<\/div>/)[0].includes('id="ce-shutter"'));
-  assert.match(html,/class="ce-camera-settings"/);
-  assert.match(html,/class="ce-menu ce-header-menu"/);
-  assert.match(html,/class="ce-menu ce-quick"/);
-  assert.doesNotMatch(html,/id="ce-quote-designs"/);
-  assert.equal((html.match(/<details[^>]*\bopen(?:\s|>)/g)||[]).length,0);
-  assert.match(html, /id="ce-save-exit"[^>]*>Save &amp; Exit/);
-  assert.match(html, /id="ce-exit-dialog"[^>]*role="alertdialog"[^>]*hidden/);
-  assert.match(html, /id="ce-empty"[^>]*>[\s\S]*Make this moment yours\.[\s\S]*choose one from your gallery\./);
-  assert.match(html, /id="ce-camera-gallery-slot"/);
-  assert.match(html, /id="ce-error" class="ce-error" role="alert"/);
+import { renderCreativeEditor } from "./creative-editor-view.js";
+
+const ids = html => [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+
+test("editor view keeps its camera controls but exposes no draft action", () => {
+  const html = renderCreativeEditor(), foundIds = ids(html);
+  assert.equal(foundIds.length, new Set(foundIds).size);
+  for (const id of ["ce-shutter", "ce-photo", "ce-record", "ce-flash", "ce-camera-gallery-slot", "ce-publish", "ce-upload"]) {
+    assert.ok(foundIds.includes(id), id);
+  }
+  for (const destination of ["feed", "story", "close-friends"]) {
+    assert.match(html, new RegExp(`data-ce-share-destination="${destination}"`));
+  }
+  assert.doesNotMatch(html, /is-create-v2|data-ce-rail=|id="ce-next-action"/);
+  assert.doesNotMatch(html, /Filters|ce-filter-button|ce-crop-overlay|Crop \/ Reframe/i);
+  assert.doesNotMatch(html, /ce-save-exit|ce-exit-save|Save &amp; Exit|draft restored/i);
+});
+
+test("new Create preview has the single-screen tools and destinations", () => {
+  const html = renderCreativeEditor({ editorVersion: "v2" }), foundIds = ids(html);
+  assert.equal(foundIds.length, new Set(foundIds).size);
+  for (const tool of ["text", "templates", "stickers", "overlay", "remove-bg", "canvas-color", "layers", "caption", "more", "draw", "trim"]) {
+    assert.match(html, new RegExp(`data-ce-rail="${tool}"`));
+  }
+  assert.match(html, /data-ce-share-destination="feed"/);
+  for (const visibility of ["public", "friends"]) {
+    assert.match(html, new RegExp(`data-ce-feed-visibility="${visibility}"`));
+  }
+  assert.match(html, /id="ce-caption"/);
+  assert.match(html, /data-ce-share-destination="feed"[^>]*>Main Feed/);
+  assert.match(html, /data-ce-share-destination="story"[^>]*>Story/);
+  assert.match(html, /data-ce-share-destination="close-friends"[^>]*>Close Friends/);
+  assert.match(html, /id="ce-next-action"/);
+  assert.match(html, /aria-label="Share"/);
+  assert.match(html, /id="ce-empty-camera"/);
+  assert.match(html, /id="ce-empty-upload"/);
+  assert.match(html, /id="ce-empty-text"/);
+  assert.match(html, /id="ce-sound-chip"/);
+  assert.match(html, /id="ce-sound-upload"/);
+  assert.match(html, /<option value="story"/);
+  assert.doesNotMatch(html, /ce-save-exit|ce-exit-save|Save &amp; Exit|draft restored/i);
+  for (const preset of ["plain", "editorial", "neon", "outline", "echo", "chrome", "gold", "extruded"]) {
+    assert.match(html, new RegExp(`data-ce-text-preset="${preset}"`));
+  }
+  assert.doesNotMatch(html, /Filters|ce-filter-button|ce-crop-overlay|Crop \/ Reframe/i);
+});
+
+test("Story preview uses Story audiences rather than post visibility labels", () => {
+  const html = renderCreativeEditor({ editorVersion: "v2", destination: "story" });
+  assert.match(html, /data-ce-share-destination="story"[^>]*>Story/);
+  assert.match(html, /data-ce-share-destination="close-friends"[^>]*>Close Friends/);
+  assert.doesNotMatch(html, /data-ce-feed-visibility="friends"[^>]*>Friends &amp; Followers/);
 });
