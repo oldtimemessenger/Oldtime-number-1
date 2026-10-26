@@ -1,0 +1,33 @@
+/* TikTok-style center Create button in bottom nav */
+.nav-create {
+  display: grid !important;
+  place-items: center;
+  align-self: end;
+  justify-self: center;
+  width: 48px;
+  height: 32px;
+  margin: 0 auto 10px;
+  padding: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(254, 44, 85, 0.35);
+  position: relative;
+  top: -6px;
+}
+.nav-create:active { transform: scale(0.94); }
+.nav-create-plus {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.2);
+}
+.media-feed-phone > .nav .nav-create {
+  background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+  color: #fff !important;
+}
+.media-feed-phone > .nav .nav-create-plus { color: #fff; }
+.lightnav .nav-create {
+  background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+}
