@@ -1,1 +1,10 @@
-/* see file - content too large for single message; using alternative push */
+:root {
+  --bg: #ffffff;
+  --panel: #f2f3f5;
+  --card: #fafbfc;
+  --line: rgba(24,28,34,.12);
+  --text: #17191d;
+  --muted: #6d737c;
+  --accent: #24262b;
+  /* RESTORED PLACEHOLDER - full restore needed */
+}
