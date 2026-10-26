@@ -15,19 +15,19 @@ const actionIcon = (icons, name) => icons[name] || fallbackIcon;
 
 export function openCreationHub(actions, icons = {}) {
   closeCreationHub();
-  const fixedActions = [
+  // TikTok-style: Camera / Studio first, then Story + gallery upload
+  const primaryActions = [
+    ["camera", "Camera", icons.camera],
+    ["studio", "Studio", icons.template]
+  ].filter(([id]) => typeof actions[id] === "function");
+
+  const secondaryActions = [
     ["story", "Story", icons.timeCircle],
-    ["photo", "Main feed", icons.image]
-  ];
-  const availableActions = fixedActions.filter(([id]) =>
+    ["photo", "Upload", icons.image]
+  ].filter(([id]) =>
     id === "photo" ? typeof actions.media === "function" : typeof actions[id] === "function"
   );
-  const primaryActions = [
-    ["studio", "Oldtime Studio", icons.template],
-    ["camera", "Camera", icons.camera]
-  ].filter(([id]) => typeof actions[id] === "function");
-  const quickActions = availableActions.filter(([id]) => id === "board");
-  const shareActions = availableActions.filter(([id]) => id !== "board");
+
   const button = ([id, label, glyph], className = "") => {
     const iconMarkup = glyph || fallbackIcon;
     return `<button type="button" class="${className}" data-ch="${id}">${className.split(/\s+/).includes("ch-primary")
@@ -40,17 +40,16 @@ export function openCreationHub(actions, icons = {}) {
     <main class="ch-page" role="dialog" aria-modal="true" aria-labelledby="ch-title">
       <header class="ch-header">
         <button type="button" class="ch-close" data-ch-close aria-label="Close">${actionIcon(icons, "close")}</button>
-        <h1 id="ch-title">Create post</h1>
+        <h1 id="ch-title">Create</h1>
         <span class="ch-header-spacer" aria-hidden="true"></span>
       </header>
       <div class="ch-scroll">
-        <section class="ch-primary-actions" aria-label="Create with Oldtime">
+        <section class="ch-primary-actions" aria-label="Record or edit">
           ${primaryActions.map(item => button(item, "ch-primary")).join("")}
         </section>
-        ${quickActions.length ? `<section class="ch-quick-actions" aria-label="Quick actions">${quickActions.map(item => button(item, "ch-quick")).join("")}</section>` : ""}
         <section class="ch-share-section" aria-labelledby="ch-share-title">
-          <div class="ch-section-heading"><h2 id="ch-share-title">More ways to share</h2></div>
-          <div class="ch-action-grid">${shareActions.map(item => button(item, "ch-row")).join("")}</div>
+          <div class="ch-section-heading"><h2 id="ch-share-title">More</h2></div>
+          <div class="ch-action-grid">${secondaryActions.map(item => button(item, "ch-row")).join("")}</div>
         </section>
       </div>
       <input class="ch-file" data-ch-file type="file" accept="image/*,video/*" aria-label="Choose a photo or video">
